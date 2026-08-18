@@ -1,4 +1,4 @@
-"""The worker: connects to Temporal, registers the workflow and activities,
+"""The Worker: connects to Temporal, registers the Workflow and Activities,
 and polls the task queue for work.
 
 This is the process the demo crashes and restarts. Run it with the dev server
