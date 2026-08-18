@@ -1,38 +1,39 @@
-"""Start one workflow and print its result.
+"""Place one order and print the charge.
 
-A convenience for running the demo by hand. With the dev server and worker up,
-`make run` fires a workflow through the live worker so you can watch the whole
-path in the Web UI. The real client is the control plane in a later PR; this is
-a stopgap so there's something to run today.
+A convenience for running the demo by hand. With the dev server, the payment
+stub, and the Worker up, `make run` starts an OrderWorkflow so you can watch it
+in the Web UI. The real client is the control plane in a later PR.
 
-    uv run python -m delivery.starter [name]
+    uv run python -m delivery.starter
 """
 
 import asyncio
-import sys
 import uuid
 
 from temporalio.client import Client
 
+from delivery.models import Order
 from delivery.shared import TASK_QUEUE, TEMPORAL_TARGET
-from delivery.workflows import GreetingWorkflow
+from delivery.workflows import OrderWorkflow
 
 
 async def main() -> None:
-    name = sys.argv[1] if len(sys.argv) > 1 else "world"
+    order = Order(
+        order_id=f"order-{uuid.uuid4().hex[:8]}",
+        amount_cents=1999,
+        description="Pad Thai",
+    )
     client = await Client.connect(TEMPORAL_TARGET)
-
-    workflow_id = f"greeting-{uuid.uuid4()}"
     handle = await client.start_workflow(
-        GreetingWorkflow.run,
-        name,
-        id=workflow_id,
+        OrderWorkflow.run,
+        order,
+        id=order.order_id,
         task_queue=TASK_QUEUE,
     )
-    print(f"Started {workflow_id} — watch it at http://localhost:8233")
+    print(f"Placed {order.order_id}. Watch it at http://localhost:8233")
 
-    result = await handle.result()
-    print(f"Result: {result}")
+    charge_id = await handle.result()
+    print(f"Charged: {charge_id}")
 
 
 if __name__ == "__main__":
