@@ -17,7 +17,7 @@ One food-delivery order, three lenses:
 - **Idempotency throughout.** Every mutating step is idempotent on the order, so retries never double-act (no double-charge, second ticket, or second driver). Payment is the visible headline.
 - **One order at a time.** No new order until the current one finishes.
 - **Real Temporal Web UI** for Insight, not a custom history view.
-- **Themed** chaos panel in the Temporal palette (dark background, text `#F8FAFC`, green `#59FDA0`, pink `#FF79C6`, cyan `#8BE9FD`).
+- **Themed** chaos panel in Temporal's corporate brand colors. The exact palette is still being settled, so we don't pin specific values yet.
 - **Standalone first.** Instruqt packaging is a later, separate phase.
 - **Worker kill** with `kill -9` on a control-plane-managed child process, then respawn. A real, ungraceful crash, not a container stop.
 - **Frontend and updates.** React for the chaos panel, polling for live updates (WebSocket only if it feels laggy), and stubs that keep a tiny ledger so "charged exactly once" is visible on screen.
