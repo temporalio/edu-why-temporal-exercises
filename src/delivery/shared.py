@@ -1,4 +1,4 @@
-"""Constants shared by the worker, the workflow, and the tests."""
+"""Constants shared by the Worker, the Workflow, and the tests."""
 
 # The task queue the worker polls and clients target.
 TASK_QUEUE = "delivery"
