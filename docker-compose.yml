@@ -1,0 +1,11 @@
+# Temporal dev server: in-memory, always-on, with the Web UI.
+# `docker compose up` starts a clean server each session (nothing persists),
+# which is what the demo wants: the worker is the thing we crash, not the server.
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    command: server start-dev --ip 0.0.0.0
+    container_name: why-temporal-dev
+    ports:
+      - "7233:7233" # gRPC frontend, where the worker and clients connect
+      - "8233:8233" # Web UI, http://localhost:8233
