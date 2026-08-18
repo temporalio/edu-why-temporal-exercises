@@ -13,11 +13,13 @@ uv sync            # install dependencies
 make test          # run the test suite (no Docker needed)
 ```
 
-To run the demo against a real server:
+To run the demo, in separate terminals:
 
 ```sh
-make temporal      # start the Temporal dev server (Web UI at http://localhost:8233)
-make worker        # in a second terminal, start the worker
+make temporal      # the Temporal dev server (Web UI at http://localhost:8233)
+make payment       # the payment service stub
+make worker        # the Worker, polling the "delivery" queue
+make run           # place an order and watch it charge
 ```
 
-`make help` lists the available commands. The layout: the app lives in `src/delivery/` (`workflows.py`, `activities.py`, `worker.py`), tests in `tests/`, and the Temporal dev server in `docker-compose.yml`.
+`make help` lists the available commands. The layout: the app lives in `src/delivery/` (`workflows.py`, `activities.py`, `worker.py`, and the service stubs under `stubs/`), tests in `tests/`, and the Temporal dev server in `docker-compose.yml`.
