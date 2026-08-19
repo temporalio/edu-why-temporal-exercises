@@ -27,12 +27,12 @@ One food-delivery order, three lenses:
 **Components** (each a separate app; the Python parts as processes, Temporal as a container):
 
 - **Temporal** — dev server plus Web UI (`:8233`), run from its prebuilt Docker image. Always-on (it's the durable foundation the demo rests on), so in-memory persistence is fine and gives a clean slate each session.
-- **Order workflow** — five sequential activities, each with its own retry policy and timeout, each idempotent on the order ID:
-  1. Charge payment → payment service
-  2. Send to the restaurant → restaurant service
-  3. Kitchen prep → a timer (natural wait)
-  4. Dispatch a driver → driver service
-  5. Delivery → a timer (en route) plus a driver-service confirm
+- **Order Workflow** — five sequential steps, each idempotent on the order ID. The three service calls (charge, restaurant, dispatch) carry a retry policy and timeout; the two waits (kitchen, delivery) block on an external signal, the honest model, since a real kitchen or driver reports back rather than finishing on a clock:
+  1. Charge payment → payment service (call)
+  2. Send to the restaurant → restaurant service (call)
+  3. Kitchen prep → wait for a "ready" signal from the (simulated) kitchen
+  4. Dispatch a driver → driver service (call)
+  5. Delivery → wait for a "delivered" signal, plus the driver-service confirm
 - **Service stubs** (payment, restaurant, driver) — each with an on/off switch; off makes the call fail so the step retries.
 - **Worker** — runs the workflow. The control plane launches it as a child process and kills it with `kill -9` (a real, ungraceful crash, no clean shutdown), then respawns it. Identical local or in Instruqt, since it's just a process and a signal.
 - **Control plane plus themed frontend** — the always-on backend the panel talks to: places orders, toggles the stubs, stops and starts the worker, models the order app up or down, and reads workflow progress to drive the view.
@@ -45,7 +45,7 @@ One food-delivery order, three lenses:
 
 The worker/app pair is the sharpest teaching moment: the same gesture has opposite effects on an in-flight order, killing the worker pauses it, killing the app doesn't touch it. That is what each piece is *for*, the worker is execution, the app is just the front door.
 
-**Pacing and progress.** Steps need short, tunable delays (`workflow.sleep` timers, themselves durable) so there's a window to break things; where the domain already waits (kitchen prep, driver en route) we lean on that. Time-skipping keeps these delays out of the test suite. A simple progress indicator shows which steps are done and which is current. Progress comes from a workflow Query the frontend polls; while the worker is off the Query can't answer, but the bar just holds at the last step and the worker toggle explains it.
+**Pacing and progress.** Per-step latency lives in the *services* (the payment processor takes a beat), is tunable, and is turned off in tests; its only job is to make a step visible on the progress bar. The real interaction windows come from two places: toggles set *before* a run (flip a dependency off, then place the order, and it fails and retries on its own, no stopwatch), and the genuine waits (kitchen, delivery), where the order parks on an external signal for as long as it takes, the calm place to kill the Worker and watch it resume.
 
 ## Delivery
 
