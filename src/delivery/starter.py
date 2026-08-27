@@ -32,8 +32,9 @@ async def main() -> None:
     )
     print(f"Placed {order.order_id}. Watch it at http://localhost:8233")
 
-    charge_id = await handle.result()
-    print(f"Charged: {charge_id}")
+    result = await handle.result()
+    print(f"Charged: {result.charge_id}")
+    print(f"Sent to restaurant: {result.ticket_id}")
 
 
 if __name__ == "__main__":

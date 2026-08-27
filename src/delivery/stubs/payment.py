@@ -13,7 +13,7 @@ argument); tests pass 0 so the suite stays fast.
 The on/off switch that makes the service fail (so a step retries) arrives in a
 later PR; for now it always succeeds.
 
-    uv run uvicorn delivery.stubs.payment:app --port 8081
+    uv run python -m uvicorn delivery.stubs.payment:app --port 8081
 """
 
 import asyncio

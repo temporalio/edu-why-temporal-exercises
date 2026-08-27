@@ -1,9 +1,9 @@
-"""OrderWorkflow charges the order and retries the charge until it succeeds.
+"""OrderWorkflow charges the order, sends it to the restaurant, and returns both
+results as an OrderResult.
 
-The Activity is mocked here so we test the Workflow's orchestration in isolation:
-that it calls the charge, and that a transient failure is retried to completion.
-The real HTTP path to the payment stub is covered by the integration test in a
-later PR.
+The Activities are mocked here so we test the Workflow's orchestration in
+isolation: that it runs both steps and returns their results. The real HTTP path
+to the stubs is covered by the integration test in a later PR.
 """
 
 import uuid
@@ -18,13 +18,13 @@ from delivery.shared import TASK_QUEUE
 from delivery.workflows import OrderWorkflow
 
 
-async def run_order(client: Client, order: Order, charge_activity) -> str:
-    """Run OrderWorkflow under a Worker with the given charge Activity."""
+async def run_order(client: Client, order: Order, activities: list):
+    """Run OrderWorkflow under a Worker with the given Activities."""
     async with Worker(
         client,
         task_queue=TASK_QUEUE,
         workflows=[OrderWorkflow],
-        activities=[charge_activity],
+        activities=activities,
     ):
         return await client.execute_workflow(
             OrderWorkflow.run,
@@ -38,20 +38,24 @@ def an_order() -> Order:
     return Order(order_id=f"order-{uuid.uuid4().hex[:8]}", amount_cents=1999)
 
 
-async def test_order_charges_and_completes():
-    charged: list[str] = []
+@activity.defn(name="charge_payment")
+async def ok_charge(order: Order) -> str:
+    return f"ch-{order.order_id}"
 
-    @activity.defn(name="charge_payment")
-    async def fake_charge(order: Order) -> str:
-        charged.append(order.order_id)
-        return f"ch-{order.order_id}"
 
+@activity.defn(name="send_to_restaurant")
+async def ok_restaurant(order: Order) -> str:
+    return f"tkt-{order.order_id}"
+
+
+async def test_order_runs_both_steps_and_returns_result():
     order = an_order()
     async with await WorkflowEnvironment.start_time_skipping() as env:
-        result = await run_order(env.client, order, fake_charge)
+        result = await run_order(env.client, order, [ok_charge, ok_restaurant])
 
-        assert result == f"ch-{order.order_id}"
-        assert charged == [order.order_id]
+    assert result.order_id == order.order_id
+    assert result.charge_id == f"ch-{order.order_id}"
+    assert result.ticket_id == f"tkt-{order.order_id}"
 
 
 async def test_charge_is_retried_then_completes():
@@ -66,7 +70,25 @@ async def test_charge_is_retried_then_completes():
 
     order = an_order()
     async with await WorkflowEnvironment.start_time_skipping() as env:
-        result = await run_order(env.client, order, flaky_charge)
+        result = await run_order(env.client, order, [flaky_charge, ok_restaurant])
 
-        assert result == f"ch-{order.order_id}"
-        assert len(attempts) == 2  # failed once, retried, then succeeded
+    assert result.charge_id == f"ch-{order.order_id}"
+    assert len(attempts) == 2  # failed once, retried, then succeeded
+
+
+async def test_restaurant_is_retried_then_completes():
+    attempts: list[int] = []
+
+    @activity.defn(name="send_to_restaurant")
+    async def flaky_restaurant(order: Order) -> str:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("restaurant service unavailable")
+        return f"tkt-{order.order_id}"
+
+    order = an_order()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await run_order(env.client, order, [ok_charge, flaky_restaurant])
+
+    assert result.ticket_id == f"tkt-{order.order_id}"
+    assert len(attempts) == 2  # failed once, retried, then succeeded
