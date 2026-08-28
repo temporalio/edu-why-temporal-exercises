@@ -13,12 +13,12 @@ from temporalio.client import Client
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from delivery.models import Order
+from delivery.models import Order, OrderResult
 from delivery.shared import TASK_QUEUE
 from delivery.workflows import OrderWorkflow
 
 
-async def run_order(client: Client, order: Order, activities: list):
+async def run_order(client: Client, order: Order, activities: list) -> OrderResult:
     """Run OrderWorkflow under a Worker with the given Activities."""
     async with Worker(
         client,
