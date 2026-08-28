@@ -8,3 +8,6 @@ TEMPORAL_TARGET = "localhost:7233"
 
 # Where the payment service stub listens.
 PAYMENT_URL = "http://localhost:8081"
+
+# Where the restaurant service stub listens.
+RESTAURANT_URL = "http://localhost:8082"
