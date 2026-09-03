@@ -7,9 +7,10 @@ to the stubs is covered by the integration test in a later PR.
 """
 
 import uuid
+from datetime import timedelta
 
 from temporalio import activity
-from temporalio.client import Client
+from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -19,19 +20,27 @@ from delivery.workflows import OrderWorkflow
 
 
 async def run_order(client: Client, order: Order, activities: list) -> OrderResult:
-    """Run OrderWorkflow under a Worker with the given Activities."""
+    """Run OrderWorkflow under a Worker with the given Activities to completion.
+
+    Sends the kitchen-ready signal so the order clears the kitchen wait and
+    finishes; the test that exercises the wait itself uses its own flow. Signaling
+    immediately is safe: the flag is durable, so an early signal just pre-sets it
+    and wait_condition passes straight through.
+    """
     async with Worker(
         client,
         task_queue=TASK_QUEUE,
         workflows=[OrderWorkflow],
         activities=activities,
     ):
-        return await client.execute_workflow(
+        handle = await client.start_workflow(
             OrderWorkflow.run,
             order,
             id=order.order_id,
             task_queue=TASK_QUEUE,
         )
+        await handle.signal("kitchen_ready")
+        return await handle.result()
 
 
 def an_order() -> Order:
@@ -92,3 +101,40 @@ async def test_restaurant_is_retried_then_completes():
 
     assert result.ticket_id == f"tkt-{order.order_id}"
     assert len(attempts) == 2  # failed once, retried, then succeeded
+
+
+async def test_order_waits_for_the_kitchen_signal():
+    """The order parks at the kitchen until the kitchen_ready signal arrives: the
+    passage of time alone does not advance it, only the signal does. (A sleep longer
+    than the jump below would slip past this check; we're guarding against the order
+    moving on its own with time, not against that narrower case.)"""
+    order = an_order()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=TASK_QUEUE,
+            workflows=[OrderWorkflow],
+            activities=[ok_charge, ok_restaurant],
+        ):
+            handle = await env.client.start_workflow(
+                OrderWorkflow.run,
+                order,
+                id=order.order_id,
+                task_queue=TASK_QUEUE,
+            )
+
+            # Skip well past any accidental delay, without signaling. Simulated time,
+            # so it's instant; it also settles the workflow at its wait before we
+            # inspect it, rather than racing the worker.
+            await env.sleep(timedelta(minutes=5))
+
+            # Time alone did not move the order on; it is still parked.
+            assert (await handle.describe()).status == WorkflowExecutionStatus.RUNNING
+
+            # The signal is what releases it.
+            await handle.signal("kitchen_ready")
+            result = await handle.result()
+
+    assert result.order_id == order.order_id
+    assert result.charge_id == f"ch-{order.order_id}"
+    assert result.ticket_id == f"tkt-{order.order_id}"
