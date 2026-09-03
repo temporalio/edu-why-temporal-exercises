@@ -35,6 +35,7 @@ class OrderWorkflow:
 
     @workflow.run
     async def run(self, order: Order) -> OrderResult:
+        workflow.logger.info(f"[order]      order {order.order_id}: started")
         charge_id = await workflow.execute_activity(
             charge_payment,
             order,
@@ -51,7 +52,9 @@ class OrderWorkflow:
         # kitchen reports back when it's done rather than finishing on a clock, so
         # the honest model is to wait for an external signal, not a timer. This is
         # also the calm place to kill the Worker and watch the order resume.
+        workflow.logger.info(f"[order]      order {order.order_id}: waiting on the kitchen")
         await workflow.wait_condition(lambda: self._kitchen_ready)
+        workflow.logger.info(f"[order]      order {order.order_id}: kitchen ready, completing")
         return OrderResult(
             order_id=order.order_id,
             charge_id=charge_id,

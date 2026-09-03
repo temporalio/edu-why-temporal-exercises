@@ -37,11 +37,10 @@ async def main() -> None:
     # from a separate kitchen service, not from the client.
     await asyncio.sleep(3)
     await handle.signal(OrderWorkflow.kitchen_ready)
-    print("Kitchen reported ready")
+    print("(stand-in kitchen) reported the order ready")
 
     result = await handle.result()
-    print(f"Charged: {result.charge_id}")
-    print(f"Sent to restaurant: {result.ticket_id}")
+    print(f"Order {result.order_id} complete. (Per-step detail is in the Worker log.)")
 
 
 if __name__ == "__main__":

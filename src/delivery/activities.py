@@ -21,7 +21,9 @@ async def charge_payment(order: Order) -> str:
             json={"order_id": order.order_id, "amount_cents": order.amount_cents},
         )
         response.raise_for_status()
-        return response.json()["charge_id"]
+        charge_id = response.json()["charge_id"]
+        print(f"[charge]     order {order.order_id}: charged ({charge_id})")
+        return charge_id
 
 
 @activity.defn
@@ -32,4 +34,6 @@ async def send_to_restaurant(order: Order) -> str:
             json={"order_id": order.order_id, "description": order.description},
         )
         response.raise_for_status()
-        return response.json()["ticket_id"]
+        ticket_id = response.json()["ticket_id"]
+        print(f"[restaurant] order {order.order_id}: ticket created ({ticket_id})")
+        return ticket_id
