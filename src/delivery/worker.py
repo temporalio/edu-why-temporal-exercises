@@ -6,7 +6,9 @@ up: `make worker` (or `uv run python -m delivery.worker`).
 """
 
 import asyncio
+import logging
 
+from temporalio import activity, workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -16,6 +18,10 @@ from delivery.workflows import OrderWorkflow
 
 
 async def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # quiet per-request HTTP logs
+    workflow.logger.workflow_info_on_message = False  # drop the context dict from workflow lines
+    activity.logger.activity_info_on_message = False  # same, for activity lines
     client = await Client.connect(TEMPORAL_TARGET)
     worker = Worker(
         client,

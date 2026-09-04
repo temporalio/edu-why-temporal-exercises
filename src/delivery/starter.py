@@ -32,9 +32,15 @@ async def main() -> None:
     )
     print(f"Placed {order.order_id}. Watch it at http://localhost:8233")
 
+    # Stand in for the (eventual) simulated kitchen: after a short prep, report the
+    # order ready so it clears the kitchen wait. In the real demo this signal comes
+    # from a separate kitchen service, not from the client.
+    await asyncio.sleep(3)
+    await handle.signal(OrderWorkflow.kitchen_ready)
+    print("(stand-in kitchen) reported the order ready")
+
     result = await handle.result()
-    print(f"Charged: {result.charge_id}")
-    print(f"Sent to restaurant: {result.ticket_id}")
+    print(f"Order {result.order_id} complete. (Per-step detail is in the Worker log.)")
 
 
 if __name__ == "__main__":
