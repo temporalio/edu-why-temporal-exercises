@@ -22,7 +22,7 @@ async def charge_payment(order: Order) -> str:
         )
         response.raise_for_status()
         charge_id = response.json()["charge_id"]
-        print(f"[charge]     order {order.order_id}: charged ({charge_id})")
+        activity.logger.info(f"[charge]     order {order.order_id}: charged ({charge_id})")
         return charge_id
 
 
@@ -35,5 +35,5 @@ async def send_to_restaurant(order: Order) -> str:
         )
         response.raise_for_status()
         ticket_id = response.json()["ticket_id"]
-        print(f"[restaurant] order {order.order_id}: ticket created ({ticket_id})")
+        activity.logger.info(f"[restaurant] order {order.order_id}: ticket created ({ticket_id})")
         return ticket_id
