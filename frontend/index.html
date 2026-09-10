@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chaos Panel</title>
+<meta name="description" content="Interactive prototype of the food-delivery chaos panel.">
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  :root {
+    color-scheme: dark;
+    --ground: #121212;  --surface: #1A1A19;  --surface-2: #201F1D;
+    --text: #FBFBFA;    --muted: #667CA1;
+    --hairline: rgba(251, 251, 250, .13); --hairline-2: rgba(251, 251, 250, .06);
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+
+    /* accents = palette "loud", fills = palette "quiet" (dark). Single theme: Instruqt is dark. */
+    --blue: #0090FF;   --blue-fill: #113264;   /* info */
+    --green: #30A46C;  --green-fill: #193B2D;   /* success */
+    --amber: #FFA800;  --amber-fill: #663300;   /* warning */
+    --coral: #E5484D;  --coral-fill: #641723;   /* danger */
+    --brand: #444CE7;                            /* brand (Temporal UV) */
+    --brand-grad: linear-gradient(45deg, #B664FF 0%, #444CE7 100%);   /* temporal.io button fill */
+    --idle: #667CA1;   --idle-fill: #243349;    /* neutral */
+    --knob-ink: #1A1A19;
+  }
+
+  /* ------------------------------------------------------------------ base */
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.4; font-size: 13px; -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 12px 12px 20px; }
+  h1 { margin: 0; }
+  .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+
+  /* --------------------------------------------------------------- top bar */
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand .logo { width: 26px; height: 26px; flex: none; display: block; }
+  .brand h1 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+  .brand p { margin: 0; font-size: 11px; color: var(--muted); }
+
+  /* ----------------------------------------------------------------- cards */
+  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 12px; margin-bottom: 10px; }
+
+  /* ----------------------------------------------------------------- stage */
+  .stage-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .status-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px;
+    border-radius: 999px; font-size: 11.5px; font-weight: 650; background: var(--idle-fill); color: var(--muted); }
+  .status-pill .led { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .status-pill.running { color: var(--blue); background: var(--blue-fill); }
+  .status-pill.complete { color: var(--green); background: var(--green-fill); }
+  .order-id { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+
+  .narration { display: flex; align-items: flex-start; gap: 9px; margin: 10px 0 2px; padding: 9px 11px;
+    min-height: 56px; border-radius: 9px; font-size: 12px; line-height: 1.45; color: var(--text);
+    background: var(--idle-fill); border: 1px solid var(--hairline); transition: background .25s, border-color .25s; }
+  .narration .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex: none; background: var(--muted); }
+  .narration .ntext { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .narration[data-tone="info"] { background: var(--blue-fill); border-color: color-mix(in srgb, var(--blue) 25%, transparent); }
+  .narration[data-tone="info"] .dot { background: var(--blue); }
+  .narration[data-tone="warn"] { background: var(--amber-fill); border-color: color-mix(in srgb, var(--amber) 30%, transparent); }
+  .narration[data-tone="warn"] .dot { background: var(--amber); animation: blink 1s steps(2) infinite; }
+  .narration[data-tone="down"] { background: var(--coral-fill); border-color: color-mix(in srgb, var(--coral) 30%, transparent); }
+  .narration[data-tone="down"] .dot { background: var(--coral); animation: blink 1s steps(2) infinite; }
+  .narration[data-tone="done"] { background: var(--green-fill); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+  .narration[data-tone="done"] .dot { background: var(--green); }
+
+  /* -------------------------------------------------------------- pipeline */
+  .pipe-scroll { overflow-x: auto; margin: 10px -2px 2px; padding: 2px; }
+  .pipeline { display: flex; align-items: stretch; min-width: 0; margin: 0; padding: 10px 0 0; list-style: none; }
+  .pipeline.paused { opacity: .5; filter: saturate(.6); }
+  .step { flex: 1 1 0; display: flex; flex-direction: column; }
+
+  .node { position: relative; margin: 0 2px; padding: 9px; border-radius: 9px; flex: 1;
+    border: 1px solid var(--hairline); background: var(--surface-2); min-height: 70px;
+    display: flex; flex-direction: column; gap: 7px; transition: border-color .2s, background .2s; }
+  .node .num { position: absolute; top: -8px; left: 8px; width: 17px; height: 17px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 9.5px; font-weight: 700;
+    background: var(--surface); border: 1px solid var(--hairline); color: var(--muted); }
+  .node-main { display: flex; align-items: center; gap: 8px; }
+  .node-main .label { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; line-height: 1.25; }
+  .node-main .ctrl { flex: none; display: flex; }
+  .node .node-btn { padding: 3px 9px; border-radius: 7px; border: 1px solid var(--amber);
+    background: var(--amber); color: var(--knob-ink); font-size: 10px; font-weight: 700; cursor: pointer;
+    animation: nudge 1.4s ease-in-out infinite; }
+  .node .node-btn:hover { filter: brightness(1.05); }
+  .state-tag { display: inline-flex; align-items: center; gap: 5px; align-self: center; margin-top: auto; max-width: 100%;
+    padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 650; }
+  .state-tag .led { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+  .state-tag .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .node[data-s="upcoming"] .state-tag { color: var(--idle); background: var(--idle-fill); }
+  .node[data-s="in-progress"] { border-color: var(--blue); background: var(--blue-fill); }
+  .node[data-s="in-progress"] .num { border-color: var(--blue); color: var(--blue); }
+  .node[data-s="in-progress"] .state-tag { color: var(--blue); background: color-mix(in srgb, var(--blue) 16%, transparent); }
+  .node[data-s="in-progress"] .state-tag .led { animation: pulse 1s ease-in-out infinite; }
+  .node[data-s="retrying"] { border-color: var(--amber); background: var(--amber-fill); }
+  .node[data-s="retrying"] .num { border-color: var(--amber); color: var(--amber); }
+  .node[data-s="retrying"] .state-tag { color: var(--amber); background: color-mix(in srgb, var(--amber) 18%, transparent); }
+  .node[data-s="retrying"] .state-tag .led { animation: blink 1s steps(2) infinite; }
+  .node[data-s="waiting"] { border-color: var(--amber); background: var(--amber-fill); }
+  .node[data-s="waiting"] .num { border-color: var(--amber); color: var(--amber); }
+  .node[data-s="waiting"] .state-tag { color: var(--amber); background: color-mix(in srgb, var(--amber) 18%, transparent); }
+  .node[data-s="done"] { border-color: color-mix(in srgb, var(--green) 45%, var(--hairline)); background: var(--green-fill); }
+  .node[data-s="done"] .num { border-color: var(--green); color: var(--green); background: var(--surface); }
+  .node[data-s="done"] .state-tag { color: var(--green); background: color-mix(in srgb, var(--green) 16%, transparent); }
+
+
+  /* --------------------------------------------------------------- ledgers */
+  .ledgers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 12px; }
+  .ledger { border: 1px solid var(--hairline); border-radius: 8px; padding: 7px 9px; background: var(--surface-2);
+    display: flex; align-items: center; justify-content: space-between; gap: 7px; }
+  .ledger .name { font-size: 10.5px; font-weight: 650; color: var(--muted); }
+  .ledger.charged .name { color: var(--text); }
+  .ledger .count { font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 999px; line-height: 16px; flex: none;
+    font-variant-numeric: tabular-nums; color: var(--green); background: var(--green-fill); }
+
+  /* --------------------------------------------------------------- toggles */
+  .toggle-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  @media (max-width: 560px) { .toggle-row { grid-template-columns: repeat(2, 1fr); } .ledgers { grid-template-columns: 1fr; } }
+  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 9px; background: var(--surface-2); }
+  .toggle .meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .toggle .t-name { font-size: 11.5px; font-weight: 600; }
+  .toggle .t-state { font-size: 9.5px; font-weight: 650; display: inline-flex; align-items: center; gap: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toggle .t-state .led { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+  .up .t-state { color: var(--green); } .down .t-state { color: var(--coral); }
+
+  .switch { appearance: none; -webkit-appearance: none; cursor: pointer; flex: none;
+    width: 36px; height: 21px; border-radius: 999px; position: relative; transition: background .18s, border-color .18s;
+    background: var(--coral-fill); border: 1px solid color-mix(in srgb, var(--coral) 40%, transparent); }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--coral); transition: transform .18s, background .18s; }
+  .switch:checked { background: var(--green-fill); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
+  .switch:checked::after { transform: translateX(15px); background: var(--green); }
+  .switch:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* ---------------------------------------------------------- global levers */
+  .levers { display: flex; align-items: center; gap: 8px; }
+  @media (max-width: 560px) { .levers { flex-wrap: wrap; } }
+  .place-btn { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 16px;
+    flex: none; min-width: 132px; border-radius: 9px; border: none; cursor: pointer;
+    background: var(--brand-grad); color: #FBFBFA; font-size: 13.5px; font-weight: 650; }
+  .place-btn:hover:not(:disabled) { filter: brightness(1.06); }
+  .place-btn:disabled { cursor: not-allowed; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--hairline); color: var(--muted); }
+  .lever-toggles { display: flex; gap: 8px; flex: 1; min-width: 0; }
+  .lever-toggles .toggle { flex: 1; }
+
+  /* -------------------------------------------------------------- keyframes */
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes blink { 50% { opacity: .25; } }
+  @keyframes nudge { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <svg class="logo" width="26" height="26" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Temporal">
+        <rect width="192" height="192" rx="24" fill="url(#cp_logo_grad)"/>
+        <path d="M123.34 68.6596C119.655 41.0484 110.327 18 96 18C81.6731 18 72.3454 41.0484 68.6596 68.6596C41.0484 72.3454 18 81.6731 18 96C18 110.327 41.0525 119.655 68.6596 123.34C72.3454 150.948 81.6731 174 96 174C110.327 174 119.655 150.948 123.34 123.34C150.952 119.655 174 110.327 174 96C174 81.6731 150.948 72.3454 123.34 68.6596ZM67.7583 115.298C41.3151 111.479 25.893 102.737 25.893 96C25.893 89.2629 41.3151 80.5212 67.7583 76.7021C67.1764 83.0674 66.8733 89.566 66.8733 96C66.8733 102.434 67.1764 108.937 67.7583 115.298ZM96 25.893C102.737 25.893 111.479 41.3151 115.298 67.7583C108.937 67.1764 102.434 66.8733 96 66.8733C89.566 66.8733 83.0633 67.1764 76.7021 67.7583C80.5212 41.3151 89.2629 25.893 96 25.893ZM124.242 115.298C122.94 115.488 117.602 116.114 116.252 116.248C116.118 117.602 115.488 122.936 115.302 124.238C111.483 150.681 102.741 166.103 96.0041 166.103C89.267 166.103 80.5253 150.681 76.7061 124.238C76.5202 122.936 75.8898 117.598 75.7564 116.248C75.1421 109.979 74.7703 103.246 74.7703 96C74.7703 88.7537 75.1421 82.0206 75.7564 75.7483C82.0247 75.134 88.7577 74.7622 96.0041 74.7622C103.25 74.7622 109.983 75.134 116.252 75.7483C117.606 75.8817 122.94 76.5121 124.242 76.698C150.685 80.5172 166.111 89.2629 166.111 95.996C166.111 102.729 150.685 111.479 124.242 115.298Z" fill="#F2F2F2"/>
+        <defs>
+          <linearGradient id="cp_logo_grad" x1="183" y1="192" x2="0" y2="0" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#444CE7"/>
+            <stop offset="1" stop-color="#B664FF"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div>
+        <h1>Chaos Panel</h1>
+        <p>Place an order, disrupt its services, and watch it recover.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- WATCH -->
+  <section class="card">
+    <div class="stage-head">
+      <span class="eyebrow">The order</span>
+      <span class="status-pill" id="status-pill"><span class="led"></span><span id="status-text">No order</span></span>
+      <span class="order-id mono" id="order-id"></span>
+    </div>
+    <div class="narration" id="narration" data-tone="idle"><span class="dot"></span><span class="ntext"></span></div>
+    <div class="pipe-scroll"><ol class="pipeline" id="pipeline"></ol></div>
+    <div class="ledgers" id="ledgers"></div>
+  </section>
+
+  <!-- ACT: the two global levers -->
+  <section class="card">
+    <div class="levers">
+      <button class="place-btn" id="place-btn"></button>
+      <div class="lever-toggles" id="lever-slot"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const STEPS = [
+    { key: "charge",     label: "Charge payment",    svc: "payment",    type: "call" },
+    { key: "restaurant", label: "Send to restaurant",svc: "restaurant", type: "call" },
+    { key: "kitchen",    label: "Kitchen prep",      svc: null,         type: "wait", signal: "Kitchen ready" },
+    { key: "dispatch",   label: "Dispatch driver",   svc: "dispatch",   type: "call" },
+    { key: "delivery",   label: "Delivery",          svc: null,         type: "wait", signal: "Delivered" },
+  ];
+  const LEDGER_KEYS = {
+    charge:     { name: "Payments Received" },
+    restaurant: { name: "Orders Received"   },
+    dispatch:   { name: "Orders Dispatched" },
+  };
+
+  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null };
+  const rid = (n = 8) => Math.random().toString(16).slice(2, 2 + n);
+
+  function newOrder() {
+    return { id: "order-" + rid(), cursor: 0, progress: 0, status: "running",
+      kitchenReady: false, delivered: false, driverId: null,
+      steps: STEPS.map(s => ({ ...s, status: "upcoming" })),
+      ledger: { charge: null, restaurant: null, dispatch: null } };
+  }
+
+  function tick() {
+    const o = state.order;
+    if (!o || o.status === "complete") return;
+    if (!state.worker) return;
+    const step = o.steps[o.cursor];
+    if (step.type === "call") {
+      if (!state.services[step.svc]) { step.status = "retrying"; o.progress = 0; }
+      else {
+        step.status = "in-progress"; o.progress += 1;
+        if (o.progress >= 2) {
+          step.status = "done";
+          if (o.ledger[step.key] === null) o.ledger[step.key] = 1;
+          o.cursor += 1; o.progress = 0;
+        }
+      }
+    } else {
+      step.status = "waiting";
+      const ready = step.key === "kitchen" ? o.kitchenReady : o.delivered;
+      if (ready) { step.status = "done"; o.cursor += 1; }
+    }
+    if (o.cursor >= o.steps.length) o.status = "complete";
+  }
+
+  function render() {
+    const o = state.order;
+    const pill = document.getElementById("status-pill");
+    pill.className = "status-pill" + (o ? " " + o.status : "");
+    document.getElementById("status-text").textContent =
+      !o ? "No order" : (o.status === "complete" ? "Complete" : (state.worker ? "Running" : "Paused"));
+    document.getElementById("order-id").textContent = o ? o.id : "";
+    const nar = narration();
+    const nb = document.getElementById("narration");
+    nb.dataset.tone = nar.tone;
+    nb.querySelector(".ntext").textContent = nar.text;
+
+    const pipe = document.getElementById("pipeline");
+    pipe.className = "pipeline" + (o && !state.worker && o.status === "running" ? " paused" : "");
+    pipe.innerHTML = "";
+    (o ? o.steps : STEPS.map(s => ({ ...s, status: "upcoming" }))).forEach((step, i) => {
+      const li = document.createElement("li");
+      li.className = "step" + (step.status === "done" ? " done" : "");
+      const topCtrl = step.svc
+        ? `<input type="checkbox" class="switch node-sw" data-svc="${step.svc}" ${state.services[step.svc] ? "checked" : ""} aria-label="${step.svc} service up">`
+        : (o && step.type === "wait" && step.status === "waiting"
+            ? `<button class="node-btn" data-signal="${step.key}">Finish</button>`
+            : "");
+      li.innerHTML = `
+        <div class="node" data-s="${step.status}">
+          <span class="num">${i + 1}</span>
+          <div class="node-main">
+            <div class="label">${step.label}</div>
+            <div class="ctrl">${topCtrl}</div>
+          </div>
+          ${stateTag(step, o)}
+        </div>`;
+      pipe.appendChild(li);
+    });
+    pipe.querySelectorAll("[data-svc]").forEach(sw => sw.onchange = () => { state.services[sw.dataset.svc] = sw.checked; render(); });
+    if (o) pipe.querySelectorAll("[data-signal]").forEach(b => b.onclick = () => sendSignal(b.getAttribute("data-signal")));
+
+    const led = document.getElementById("ledgers");
+    led.innerHTML = "";
+    Object.entries(LEDGER_KEYS).forEach(([k, meta]) => {
+      const val = o ? o.ledger[k] : null;
+      const div = document.createElement("div");
+      div.className = "ledger" + (val ? " charged" : "");
+      div.innerHTML = `<span class="name">${meta.name}</span>${val ? `<span class="count">×1</span>` : ""}`;
+      led.appendChild(div);
+    });
+
+    renderControls();
+  }
+
+  function stateTag(step, o) {
+    const map = { upcoming: "Upcoming", "in-progress": "In progress", retrying: "Retrying", waiting: "Waiting", done: "Done" };
+    let label = map[step.status];
+    if (step.status === "upcoming" && step.type === "wait") label = "Awaits signal";
+    return `<span class="state-tag"><span class="led"></span><span class="txt">${label}</span></span>`;
+  }
+
+  // A running explanation of "what's happening and why". Placeholder copy — the
+  // teaching voice here is Wade's to rewrite.
+  function narration() {
+    const o = state.order;
+    if (!o) return state.app
+      ? { tone: "idle", text: "No order yet. Place one to watch it move through the steps." }
+      : { tone: "down", text: "The order app is down, so no new orders can be placed. Bring it back up to start one." };
+    if (o.status === "complete")
+      return { tone: "done", text: "Delivered. Every step ran exactly once, so the customer was charged a single time no matter how many retries it took." };
+    if (!state.worker)
+      return { tone: "down", text: "The worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the worker resumes it right where it left off." };
+    const step = o.steps[o.cursor];
+    if (step.type === "call") {
+      if (!state.services[step.svc])
+        return { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and it carries on the moment ${step.svc} is back.` };
+      const doing = { charge: "Charging the customer's card.", restaurant: "Sending the order to the restaurant.", dispatch: "Dispatching a driver." };
+      return { tone: "info", text: doing[step.key] };
+    }
+    return step.key === "kitchen"
+      ? { tone: "warn", text: "Parked at the kitchen. The order waits for the kitchen to signal the food is ready." }
+      : { tone: "warn", text: "Out for delivery. The order waits for the driver to report it delivered before it completes." };
+  }
+
+  function renderControls() {
+    const slot = document.getElementById("lever-slot");
+    slot.innerHTML = "";
+    slot.appendChild(makeToggle("Order app", state.app, "Up", "Down", v => { state.app = v; render(); }, "Order app up"));
+    slot.appendChild(makeToggle("Worker", state.worker, "Up", "Down", v => { state.worker = v; render(); }, "Worker running"));
+
+    const btn = document.getElementById("place-btn");
+    const running = state.order && state.order.status === "running";
+    btn.disabled = !state.app || running;
+    btn.textContent = !state.app ? "App is down" : running ? "One at a time" : "Place order";
+  }
+
+  function makeToggle(name, on, onLabel, offLabel, onChange, aria) {
+    const div = document.createElement("div");
+    div.className = "toggle " + (on ? "up" : "down");
+    div.innerHTML = `<div class="meta"><span class="t-name">${name}</span><span class="t-state"><span class="led"></span>${on ? onLabel : offLabel}</span></div>`;
+    const sw = document.createElement("input");
+    sw.type = "checkbox"; sw.className = "switch"; sw.checked = on; sw.setAttribute("aria-label", aria);
+    sw.onchange = () => onChange(sw.checked);
+    div.appendChild(sw);
+    return div;
+  }
+
+  function sendSignal(key) {
+    const o = state.order;
+    if (!o) return;
+    if (key === "kitchen") o.kitchenReady = true;
+    if (key === "delivery") { o.delivered = true; o.driverId = "drv-" + rid(6); }
+    render();
+  }
+
+  document.getElementById("place-btn").onclick = () => {
+    if (!state.app || (state.order && state.order.status === "running")) return;
+    state.order = newOrder(); render();
+  };
+
+  setInterval(() => { tick(); render(); }, 700);
+  render();
+</script>
+</body>
+</html>

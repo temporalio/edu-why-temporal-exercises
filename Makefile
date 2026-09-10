@@ -1,4 +1,4 @@
-.PHONY: help temporal stop payment restaurant dispatch worker run test
+.PHONY: help temporal stop payment restaurant dispatch worker run panel test
 
 help: ## Show the available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -23,6 +23,9 @@ worker: ## Run the Worker (needs the dev server running)
 
 run: ## Place an order and watch it flow (needs server, payment, restaurant, dispatch, and Worker up)
 	uv run python -m delivery.starter
+
+panel: ## Serve the chaos panel UI (http://localhost:8080)
+	uv run python -m http.server 8080 --directory frontend
 
 test: ## Run the test suite (no Docker needed; uses the time-skipping test server)
 	uv run --group dev python -m pytest
