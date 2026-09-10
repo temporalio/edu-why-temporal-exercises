@@ -11,3 +11,6 @@ PAYMENT_URL = "http://localhost:8081"
 
 # Where the restaurant service stub listens.
 RESTAURANT_URL = "http://localhost:8082"
+
+# Where the dispatch service stub listens.
+DISPATCH_URL = "http://localhost:8083"

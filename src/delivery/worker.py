@@ -12,7 +12,7 @@ from temporalio import activity, workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from delivery.activities import charge_payment, send_to_restaurant
+from delivery.activities import charge_payment, dispatch_driver, send_to_restaurant
 from delivery.shared import TASK_QUEUE, TEMPORAL_TARGET
 from delivery.workflows import OrderWorkflow
 
@@ -27,7 +27,7 @@ async def main() -> None:
         client,
         task_queue=TASK_QUEUE,
         workflows=[OrderWorkflow],
-        activities=[charge_payment, send_to_restaurant],
+        activities=[charge_payment, dispatch_driver, send_to_restaurant],
     )
     print(f"Worker polling '{TASK_QUEUE}' at {TEMPORAL_TARGET} (Ctrl-C to stop)")
     await worker.run()
