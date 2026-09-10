@@ -1,9 +1,9 @@
-"""OrderWorkflow charges the order, sends it to the restaurant, and returns both
-results as an OrderResult.
+"""OrderWorkflow charges the order, sends it to the restaurant, dispatches a
+driver, and returns the three results as an OrderResult.
 
 The Activities are mocked here so we test the Workflow's orchestration in
-isolation: that it runs both steps and returns their results. The real HTTP path
-to the stubs is covered by the integration test in a later PR.
+isolation: that it runs each step and returns its result. The real HTTP path to
+the stubs is covered by the integration test in a later PR.
 """
 
 import uuid
@@ -57,14 +57,20 @@ async def ok_restaurant(order: Order) -> str:
     return f"tkt-{order.order_id}"
 
 
-async def test_order_runs_both_steps_and_returns_result():
+@activity.defn(name="dispatch_driver")
+async def ok_dispatch(order: Order) -> str:
+    return f"dsp-{order.order_id}"
+
+
+async def test_order_runs_all_steps_and_returns_result():
     order = an_order()
     async with await WorkflowEnvironment.start_time_skipping() as env:
-        result = await run_order(env.client, order, [ok_charge, ok_restaurant])
+        result = await run_order(env.client, order, [ok_charge, ok_restaurant, ok_dispatch])
 
     assert result.order_id == order.order_id
     assert result.charge_id == f"ch-{order.order_id}"
     assert result.ticket_id == f"tkt-{order.order_id}"
+    assert result.dispatch_id == f"dsp-{order.order_id}"
 
 
 async def test_charge_is_retried_then_completes():
@@ -79,7 +85,7 @@ async def test_charge_is_retried_then_completes():
 
     order = an_order()
     async with await WorkflowEnvironment.start_time_skipping() as env:
-        result = await run_order(env.client, order, [flaky_charge, ok_restaurant])
+        result = await run_order(env.client, order, [flaky_charge, ok_restaurant, ok_dispatch])
 
     assert result.charge_id == f"ch-{order.order_id}"
     assert len(attempts) == 2  # failed once, retried, then succeeded
@@ -97,9 +103,27 @@ async def test_restaurant_is_retried_then_completes():
 
     order = an_order()
     async with await WorkflowEnvironment.start_time_skipping() as env:
-        result = await run_order(env.client, order, [ok_charge, flaky_restaurant])
+        result = await run_order(env.client, order, [ok_charge, flaky_restaurant, ok_dispatch])
 
     assert result.ticket_id == f"tkt-{order.order_id}"
+    assert len(attempts) == 2  # failed once, retried, then succeeded
+
+
+async def test_dispatch_is_retried_then_completes():
+    attempts: list[int] = []
+
+    @activity.defn(name="dispatch_driver")
+    async def flaky_dispatch(order: Order) -> str:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("dispatch service unavailable")
+        return f"dsp-{order.order_id}"
+
+    order = an_order()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        result = await run_order(env.client, order, [ok_charge, ok_restaurant, flaky_dispatch])
+
+    assert result.dispatch_id == f"dsp-{order.order_id}"
     assert len(attempts) == 2  # failed once, retried, then succeeded
 
 
@@ -114,7 +138,7 @@ async def test_order_waits_for_the_kitchen_signal():
             env.client,
             task_queue=TASK_QUEUE,
             workflows=[OrderWorkflow],
-            activities=[ok_charge, ok_restaurant],
+            activities=[ok_charge, ok_restaurant, ok_dispatch],
         ):
             handle = await env.client.start_workflow(
                 OrderWorkflow.run,
@@ -138,3 +162,4 @@ async def test_order_waits_for_the_kitchen_signal():
     assert result.order_id == order.order_id
     assert result.charge_id == f"ch-{order.order_id}"
     assert result.ticket_id == f"tkt-{order.order_id}"
+    assert result.dispatch_id == f"dsp-{order.order_id}"

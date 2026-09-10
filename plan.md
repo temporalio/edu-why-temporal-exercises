@@ -31,9 +31,9 @@ One food-delivery order, three lenses:
   1. Charge payment → payment service (call)
   2. Send to the restaurant → restaurant service (call)
   3. Kitchen prep → wait for a "ready" signal from the (simulated) kitchen
-  4. Dispatch a driver → driver service (call)
-  5. Delivery → wait for a "delivered" signal, plus the driver-service confirm
-- **Service stubs** (payment, restaurant, driver) — each with an on/off switch; off makes the call fail so the step retries.
+  4. Dispatch a driver → dispatch service (call)
+  5. Delivery → wait for a "delivered" signal, plus the dispatch-service confirm
+- **Service stubs** (payment, restaurant, dispatch) — each with an on/off switch; off makes the call fail so the step retries.
 - **Worker** — runs the workflow. The control plane launches it as a child process and kills it with `kill -9` (a real, ungraceful crash, no clean shutdown), then respawns it. Identical local or in Instruqt, since it's just a process and a signal.
 - **Control plane plus themed frontend** — the always-on backend the panel talks to: places orders, toggles the stubs, stops and starts the worker, models the order app up or down, and reads workflow progress to drive the view.
 
