@@ -39,6 +39,14 @@ async def main() -> None:
     await handle.signal(OrderWorkflow.kitchen_ready)
     print("(stand-in kitchen) reported the order ready")
 
+    # Stand in for the (eventual) simulated driver: after the run to the door, report
+    # the order delivered, naming the driver, so it clears the delivery wait. In the
+    # real demo this signal comes from the driver, not the client.
+    await asyncio.sleep(3)
+    driver_id = f"drv-{uuid.uuid4().hex[:8]}"
+    await handle.signal(OrderWorkflow.delivered, driver_id)
+    print(f"(stand-in driver) {driver_id} reported the order delivered")
+
     result = await handle.result()
     print(f"Order {result.order_id} complete. (Per-step detail is in the Worker log.)")
 

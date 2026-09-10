@@ -19,14 +19,14 @@ class Order:
 class OrderResult:
     """What OrderWorkflow returns once the order completes.
 
-    A structured result rather than a bare id, so later steps can add fields
-    (delivery confirmation) without changing the Workflow's return signature.
-    Evolving a Workflow's contract by adding fields to a struct, rather than
-    changing positional types, is the Temporal-friendly way to keep older and
-    newer versions compatible.
+    A structured result rather than a bare id, so each step contributes a field
+    without changing the Workflow's return signature. Evolving a Workflow's
+    contract by adding fields to a struct, rather than changing positional types,
+    is the Temporal-friendly way to keep older and newer versions compatible.
     """
 
     order_id: str
     charge_id: str
     ticket_id: str
     dispatch_id: str
+    driver_id: str
