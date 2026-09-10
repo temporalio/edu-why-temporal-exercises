@@ -11,15 +11,15 @@ One food-delivery order, three lenses:
 ## Decisions
 
 - **Python** worker, workflow, and activities (`temporalio` SDK).
-- **Real Temporal.** The server stays up throughout as the always-on durable foundation; the worker is the thing genuinely stopped and restarted, never faked.
-- **Separate runnable apps** run locally: Temporal, worker, service stubs, control plane, order client. The Python components run as plain processes; only Temporal is containerized, and that's a pull of its prebuilt image, not a build, so iteration stays fast and the move to Instruqt stays simple.
+- **Real Temporal.** The server stays up throughout as the always-on durable foundation; everything around it (worker, service stubs, order app) is what genuinely stops and restarts, never faked.
+- **Separate runnable apps** run locally: Temporal, worker, service stubs, order app, control plane. The Python components run as plain processes; only Temporal is containerized, and that's a pull of its prebuilt image, not a build, so iteration stays fast and the move to Instruqt stays simple.
 - **Transient failures only.** No permanent failures or rollbacks (later courses). Every step succeeds eventually while its service is on.
 - **Idempotency throughout.** Every mutating step is idempotent on the order, so retries never double-act (no double-charge, second ticket, or second driver). Payment is the visible headline.
 - **One order at a time.** No new order until the current one finishes.
 - **Real Temporal Web UI** for Insight, not a custom history view.
-- **Themed** chaos panel in Temporal's corporate brand colors. The exact palette is still being settled, so we don't pin specific values yet.
+- **Themed** chaos panel on Temporal's official brand palette; dark, single theme, since Instruqt is dark.
 - **Standalone first.** Instruqt packaging is a later, separate phase.
-- **Worker kill** with `kill -9` on a control-plane-managed child process, then respawn. A real, ungraceful crash, not a container stop.
+- **Nothing fakes being down.** Every component the panel can switch off is a real child process the control plane starts and stops: the worker, the three service stubs, and the order app alike. No service carries a "pretend I'm broken" flag, because real services don't have one. The worker specifically dies by `kill -9`, an ungraceful crash rather than a clean shutdown.
 - **Frontend and updates.** A self-contained vanilla HTML/JS chaos panel, no build step, so it's trivial to serve in an Instruqt tab. It polls the control plane for live updates (WebSocket only if polling feels laggy). Stubs keep a tiny ledger so each service acting once, however many times it's called, is visible on screen.
 
 ## Design
@@ -33,13 +33,15 @@ One food-delivery order, three lenses:
   3. Kitchen prep → wait for a "ready" signal from the (simulated) kitchen
   4. Dispatch a driver → dispatch service (call)
   5. Delivery → wait for a "delivered" signal that names the delivering driver
-- **Service stubs** (payment, restaurant, dispatch) — each with an on/off switch; off makes the call fail so the step retries.
-- **Worker** — runs the workflow. The control plane launches it as a child process and kills it with `kill -9` (a real, ungraceful crash, no clean shutdown), then respawns it. Identical local or in Instruqt, since it's just a process and a signal.
-- **Control plane plus themed frontend** — the always-on backend the panel talks to: places orders, toggles the stubs, stops and starts the worker, models the order app up or down, and reads workflow progress to drive the view.
+- **Service stubs** (payment, restaurant, dispatch) — plain services carrying no chaos machinery of their own. "Off" means the process is stopped, so the call fails outright and the step retries until it's back.
+- **Worker** — runs the workflow. Killed with `kill -9` (a real, ungraceful crash, no clean shutdown), then respawned. Identical local or in Instruqt, since it's just a process and a signal.
+- **Order app** — the front door. A small service that accepts a place-order request and starts the workflow. Kill it and no new orders can be placed, while anything already running carries on, because Temporal, not the app, is executing it.
+- **Process supervisor** — the shared piece under all the chaos: starts, stops, and reports on the managed child processes (worker, the three stubs, the order app), and waits for a restarted one to become ready. A module first, driven directly by the integration tests, and later by the control plane.
+- **Control plane plus themed frontend** — the always-on backend the panel talks to: places orders, drives the supervisor to stop and start components, and reads workflow progress to drive the view.
 
 **The toggles.** Most follow one pattern, break it, watch the order survive:
 
-- **Dependencies** off → the step waits and retries until back on; the order never fails.
+- **Dependencies** off (the process is stopped) → the call fails and the step retries until the service is back; the order never fails.
 - **Worker** off → the in-flight order *pauses*; on → it *resumes* where it left off, exactly once.
 - **Order app** off → you *can't place new orders* (submit disables), but anything in flight *keeps running*, since Temporal, not the app, executes it.
 
@@ -53,14 +55,16 @@ Ships as a sequence of small, independently reviewable PRs. Small, self-containe
 
 1. **Scaffold** — Python project, Temporal via Docker, `pytest`, a trivial workflow end to end.
 2. **First slice** — workflow skeleton plus charge-payment plus payment stub, end to end, idempotent, tested.
-3. **Remaining steps** — restaurant, kitchen timer, dispatch, delivery, added incrementally (one PR each, paired if trivial); each leaves `main` a working, shorter order.
+3. **Remaining steps** — restaurant, kitchen, dispatch, delivery, added incrementally (one PR each, paired if trivial); each leaves `main` a working, shorter order.
 4. **Chaos panel (mocked)** — the self-contained vanilla panel (order, progress, ledgers, and the chaos controls), every interaction faked in the browser. Lands the UI, and by doing so freezes the contract the control plane will have to satisfy. No backend yet.
-5. **Dependency chaos** — toggleable stubs plus a "survives an outage" integration test.
-6. **Worker chaos** — stop/restart plus a "resumes after a kill, exactly once" integration test. *(The crown jewel; its own PR.)*
-7. **Control plane** — place-order, read-progress, and the toggle endpoints.
-8. **Wire the panel** — swap the panel's faked state for real calls to the control plane, one capability at a time as its endpoint lands.
-9. **Finish** — theming, Insight (link the real Web UI), polish, and a one-command run.
-10. **Instruqt adaptation** — package the working standalone demo to run in an Instruqt lab: provisioning the environment and exposing the chaos panel and Temporal Web UI as browser tabs. The process-and-signal worker kill should carry over cleanly, so this is mostly packaging, not a rebuild. A distinct phase, taken on only once the standalone demo is solid.
+5. **Process supervisor** — start, stop, and status for the managed child processes, plus waiting for a restarted one to be ready. The shared foundation both chaos steps rest on; a module first, exercised directly by tests.
+6. **Dependency outage** — stop a service stub mid-order; the step retries and the order survives; start it again and the order completes. *(Integration test.)*
+7. **Worker chaos** — `kill -9` the worker mid-order, then respawn: it resumes where it left off and nothing double-acts. *(The crown jewel; its own PR.)*
+8. **Order app** — the front-door service that accepts a place-order request and starts the workflow. Killing it stops new orders while in-flight ones keep running.
+9. **Control plane** — the panel-facing API: place an order, read progress, and drive the supervisor for every component.
+10. **Wire the panel** — swap the panel's faked state for real calls to the control plane, one capability at a time as its endpoint lands.
+11. **Finish** — Insight (link the real Web UI), polish, and a one-command run.
+12. **Instruqt adaptation** — package the working standalone demo to run in an Instruqt lab: provisioning the environment and exposing the chaos panel and Temporal Web UI as browser tabs. The process-and-signal kills should carry over cleanly, so this is mostly packaging, not a rebuild. A distinct phase, taken on only once the standalone demo is solid.
 
 ## Testing
 
@@ -68,10 +72,10 @@ Test-first, red-green-refactor. The **red** step matters most: confirm the test 
 
 - **Workflow** — `WorkflowEnvironment` with time-skipping and mocked activities. Key cases: the happy path completes; a fail-then-succeed activity is retried and still completes; and the single most important one, **exactly-once**, no mutating step double-acts under retry (payment the headline).
 - **Activities** — `ActivityEnvironment`: each activity's success and its survivable failure.
-- **Stubs and control plane** — FastAPI `TestClient`: toggles behave, each stub acts once per idempotency key, endpoints behave with Temporal and worker-control mocked.
+- **Stubs, supervisor, and control plane** — FastAPI `TestClient` for the stubs (each acts once per idempotency key) and for the control-plane endpoints (with Temporal and the supervisor mocked). The supervisor gets its own tests: start, stop, status, and waiting for readiness.
 - **Frontend** — not a priority; the panel is vanilla HTML/JS, so at most a couple of smoke checks.
 
-One honest boundary: the worker-kill-and-resume is an *integration* property (a real `kill -9`, Temporal continuing the run), so it's a scripted end-to-end check, not a unit test.
+One honest boundary: anything that turns on really killing a process (the dependency outage, and the worker kill-and-resume) is an *integration* property, so those are scripted end-to-end checks rather than unit tests.
 
 ## Reference
 
