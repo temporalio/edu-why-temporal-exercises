@@ -22,12 +22,10 @@ from delivery.workflows import OrderWorkflow
 async def run_order(client: Client, order: Order, activities: list) -> OrderResult:
     """Run OrderWorkflow under a Worker with the given Activities to completion.
 
-    Sends both external signals so the order clears its two waits and finishes:
-    the delivered signal (carrying a driver) first, then kitchen_ready. The tests
-    that exercise a wait itself use their own flow. Signaling immediately is safe:
-    the flags are durable, so an early signal just pre-sets them and wait_condition
-    passes straight through. Delivered goes first so it lands while the order is
-    still parked at the kitchen, never after it has already finished.
+    Both signals are sent up front, before the order reaches either wait. That's
+    safe: the flags are durable, so an early signal just pre-sets one and
+    wait_condition passes straight through. Tests that exercise a wait itself send
+    their own signals.
     """
     async with Worker(
         client,
@@ -41,8 +39,8 @@ async def run_order(client: Client, order: Order, activities: list) -> OrderResu
             id=order.order_id,
             task_queue=TASK_QUEUE,
         )
-        await handle.signal("delivered", f"drv-{order.order_id}")
         await handle.signal("kitchen_ready")
+        await handle.signal("delivered", f"drv-{order.order_id}")
         return await handle.result()
 
 
@@ -159,9 +157,9 @@ async def test_order_waits_for_the_kitchen_signal():
             # Time alone did not move the order on; it is still parked.
             assert (await handle.describe()).status == WorkflowExecutionStatus.RUNNING
 
-            # Queue the delivery report, then release the kitchen wait.
-            await handle.signal("delivered", f"drv-{order.order_id}")
+            # Release the kitchen wait, then report delivery so the order can finish.
             await handle.signal("kitchen_ready")
+            await handle.signal("delivered", f"drv-{order.order_id}")
             result = await handle.result()
 
     assert result.order_id == order.order_id
