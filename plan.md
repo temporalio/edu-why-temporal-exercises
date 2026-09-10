@@ -20,7 +20,7 @@ One food-delivery order, three lenses:
 - **Themed** chaos panel in Temporal's corporate brand colors. The exact palette is still being settled, so we don't pin specific values yet.
 - **Standalone first.** Instruqt packaging is a later, separate phase.
 - **Worker kill** with `kill -9` on a control-plane-managed child process, then respawn. A real, ungraceful crash, not a container stop.
-- **Frontend and updates.** React for the chaos panel, polling for live updates (WebSocket only if it feels laggy), and stubs that keep a tiny ledger so "charged exactly once" is visible on screen.
+- **Frontend and updates.** A self-contained vanilla HTML/JS chaos panel, no build step, so it's trivial to serve in an Instruqt tab. It polls the control plane for live updates (WebSocket only if polling feels laggy). Stubs keep a tiny ledger so each service acting once, however many times it's called, is visible on screen.
 
 ## Design
 
@@ -54,12 +54,13 @@ Ships as a sequence of small, independently reviewable PRs. Small, self-containe
 1. **Scaffold** — Python project, Temporal via Docker, `pytest`, a trivial workflow end to end.
 2. **First slice** — workflow skeleton plus charge-payment plus payment stub, end to end, idempotent, tested.
 3. **Remaining steps** — restaurant, kitchen timer, dispatch, delivery, added incrementally (one PR each, paired if trivial); each leaves `main` a working, shorter order.
-4. **Dependency chaos** — toggleable stubs plus a "survives an outage" integration test.
-5. **Worker chaos** — stop/restart plus a "resumes after a kill, exactly once" integration test. *(The crown jewel; its own PR.)*
-6. **Control plane** — place-order, read-progress, and the toggle endpoints.
-7. **Chaos panel** — frontend: order plus progress view plus toggle controls, wired to the full interaction.
-8. **Finish** — theming, Insight (link the real Web UI), polish, and a one-command run.
-9. **Instruqt adaptation** — package the working standalone demo to run in an Instruqt lab: provisioning the environment and exposing the chaos panel and Temporal Web UI as browser tabs. The process-and-signal worker kill should carry over cleanly, so this is mostly packaging, not a rebuild. A distinct phase, taken on only once the standalone demo is solid.
+4. **Chaos panel (mocked)** — the self-contained vanilla panel (order, progress, ledgers, and the chaos controls), every interaction faked in the browser. Lands the UI, and by doing so freezes the contract the control plane will have to satisfy. No backend yet.
+5. **Dependency chaos** — toggleable stubs plus a "survives an outage" integration test.
+6. **Worker chaos** — stop/restart plus a "resumes after a kill, exactly once" integration test. *(The crown jewel; its own PR.)*
+7. **Control plane** — place-order, read-progress, and the toggle endpoints.
+8. **Wire the panel** — swap the panel's faked state for real calls to the control plane, one capability at a time as its endpoint lands.
+9. **Finish** — theming, Insight (link the real Web UI), polish, and a one-command run.
+10. **Instruqt adaptation** — package the working standalone demo to run in an Instruqt lab: provisioning the environment and exposing the chaos panel and Temporal Web UI as browser tabs. The process-and-signal worker kill should carry over cleanly, so this is mostly packaging, not a rebuild. A distinct phase, taken on only once the standalone demo is solid.
 
 ## Testing
 
@@ -68,7 +69,7 @@ Test-first, red-green-refactor. The **red** step matters most: confirm the test 
 - **Workflow** — `WorkflowEnvironment` with time-skipping and mocked activities. Key cases: the happy path completes; a fail-then-succeed activity is retried and still completes; and the single most important one, **exactly-once**, no mutating step double-acts under retry (payment the headline).
 - **Activities** — `ActivityEnvironment`: each activity's success and its survivable failure.
 - **Stubs and control plane** — FastAPI `TestClient`: toggles behave, each stub acts once per idempotency key, endpoints behave with Temporal and worker-control mocked.
-- **Frontend** — light Testing Library tests if we use React; not a priority.
+- **Frontend** — not a priority; the panel is vanilla HTML/JS, so at most a couple of smoke checks.
 
 One honest boundary: the worker-kill-and-resume is an *integration* property (a real `kill -9`, Temporal continuing the run), so it's a scripted end-to-end check, not a unit test.
 
