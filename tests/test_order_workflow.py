@@ -1,5 +1,5 @@
 """OrderWorkflow charges the order, sends it to the restaurant, dispatches a
-driver, and returns the three results as an OrderResult.
+driver, waits for delivery, and returns the results as an OrderResult.
 
 The Activities are mocked here so we test the Workflow's orchestration in
 isolation: that it runs each step and returns its result. The real HTTP path to
@@ -22,10 +22,12 @@ from delivery.workflows import OrderWorkflow
 async def run_order(client: Client, order: Order, activities: list) -> OrderResult:
     """Run OrderWorkflow under a Worker with the given Activities to completion.
 
-    Sends the kitchen-ready signal so the order clears the kitchen wait and
-    finishes; the test that exercises the wait itself uses its own flow. Signaling
-    immediately is safe: the flag is durable, so an early signal just pre-sets it
-    and wait_condition passes straight through.
+    Sends both external signals so the order clears its two waits and finishes:
+    the delivered signal (carrying a driver) first, then kitchen_ready. The tests
+    that exercise a wait itself use their own flow. Signaling immediately is safe:
+    the flags are durable, so an early signal just pre-sets them and wait_condition
+    passes straight through. Delivered goes first so it lands while the order is
+    still parked at the kitchen, never after it has already finished.
     """
     async with Worker(
         client,
@@ -39,6 +41,7 @@ async def run_order(client: Client, order: Order, activities: list) -> OrderResu
             id=order.order_id,
             task_queue=TASK_QUEUE,
         )
+        await handle.signal("delivered", f"drv-{order.order_id}")
         await handle.signal("kitchen_ready")
         return await handle.result()
 
@@ -71,6 +74,7 @@ async def test_order_runs_all_steps_and_returns_result():
     assert result.charge_id == f"ch-{order.order_id}"
     assert result.ticket_id == f"tkt-{order.order_id}"
     assert result.dispatch_id == f"dsp-{order.order_id}"
+    assert result.driver_id == f"drv-{order.order_id}"
 
 
 async def test_charge_is_retried_then_completes():
@@ -155,7 +159,8 @@ async def test_order_waits_for_the_kitchen_signal():
             # Time alone did not move the order on; it is still parked.
             assert (await handle.describe()).status == WorkflowExecutionStatus.RUNNING
 
-            # The signal is what releases it.
+            # Queue the delivery report, then release the kitchen wait.
+            await handle.signal("delivered", f"drv-{order.order_id}")
             await handle.signal("kitchen_ready")
             result = await handle.result()
 
@@ -163,3 +168,36 @@ async def test_order_waits_for_the_kitchen_signal():
     assert result.charge_id == f"ch-{order.order_id}"
     assert result.ticket_id == f"tkt-{order.order_id}"
     assert result.dispatch_id == f"dsp-{order.order_id}"
+    assert result.driver_id == f"drv-{order.order_id}"
+
+
+async def test_order_waits_for_the_delivered_signal():
+    """After dispatch, the order parks until the driver signals delivery, and the
+    signal carries the delivering driver's id. Time alone does not advance it."""
+    order = an_order()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=TASK_QUEUE,
+            workflows=[OrderWorkflow],
+            activities=[ok_charge, ok_restaurant, ok_dispatch],
+        ):
+            handle = await env.client.start_workflow(
+                OrderWorkflow.run,
+                order,
+                id=order.order_id,
+                task_queue=TASK_QUEUE,
+            )
+
+            # Clear the kitchen wait so the order advances to the delivery wait.
+            await handle.signal("kitchen_ready")
+            await env.sleep(timedelta(minutes=5))
+
+            # Parked at delivery: time and a completed dispatch did not finish it.
+            assert (await handle.describe()).status == WorkflowExecutionStatus.RUNNING
+
+            # The delivered signal releases it and names the driver.
+            await handle.signal("delivered", "drv-42")
+            result = await handle.result()
+
+    assert result.driver_id == "drv-42"
