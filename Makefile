@@ -1,4 +1,4 @@
-.PHONY: help temporal stop payment restaurant dispatch worker run panel test
+.PHONY: help temporal stop payment restaurant dispatch order-app worker run panel test
 
 help: ## Show the available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -17,6 +17,9 @@ restaurant: ## Run the restaurant service stub (http://localhost:8082)
 
 dispatch: ## Run the dispatch service stub (http://localhost:8083)
 	uv run python -m uvicorn delivery.stubs.dispatch:app --port 8083
+
+order-app: ## Run the order app, the front door that places orders (http://localhost:8084)
+	uv run python -m uvicorn delivery.order_app:app --port 8084
 
 worker: ## Run the Worker (needs the dev server running)
 	uv run python -m delivery.worker
