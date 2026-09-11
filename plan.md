@@ -33,6 +33,8 @@ One food-delivery order, three lenses:
   3. Kitchen prep → wait for a "ready" signal from the (simulated) kitchen
   4. Dispatch a driver → dispatch service (call)
   5. Delivery → wait for a "delivered" signal that names the delivering driver
+
+  It also answers a **progress query** naming where the order has got to, as one of six stable keys: one per step above, plus `complete`. That is how the panel knows the order's position, rather than inferring it from event history. Two things the query deliberately doesn't do. It says nothing about retrying, because the Workflow only knows it is awaiting an Activity, not that the Activity keeps failing, so that gets inferred from the service being stopped. And it cannot be answered while the Worker is down, because a Worker is what executes the query: the call hangs until its timeout rather than failing fast, so whatever reads progress has to check the Worker is up first.
 - **Service stubs** (payment, restaurant, dispatch) — plain services carrying no chaos machinery of their own. "Off" means the process is stopped, so the call fails outright and the step retries until it's back.
 - **Worker** — runs the Workflow. Killed with `kill -9` (a real, ungraceful crash, no clean shutdown), then respawned. Identical local or in Instruqt, since it's just a process and a signal.
 - **Order app** — the front door. A small service that accepts a place-order request and starts the Workflow. Kill it and no new orders can be placed, while anything already running carries on, because Temporal, not the app, is executing it.
@@ -70,7 +72,7 @@ Ships as a sequence of small, independently reviewable PRs. Small, self-containe
 
 Test-first, red-green-refactor. The **red** step matters most: confirm the test fails for the right reason, the guard against a test that passes without exercising anything. Writing tests first also forces us to state each durability behavior precisely, which is where the subtlety lives. Runner is `pytest`, and tests ship with the PR that adds the behavior.
 
-- **Workflow** — `WorkflowEnvironment` with time-skipping and mocked Activities. Key cases: the happy path completes; a fail-then-succeed Activity is retried and still completes; and the single most important one, **exactly-once**, no mutating step double-acts under retry (payment the headline).
+- **Workflow** — `WorkflowEnvironment` with time-skipping and mocked Activities. Key cases: the happy path completes; a fail-then-succeed Activity is retried and still completes; the progress query names every state in turn, with each Activity held open on an event so no state slips past unobserved; and the single most important one, **exactly-once**, no mutating step double-acts under retry (payment the headline).
 - **Activities** — `ActivityEnvironment`: each Activity's success and its survivable failure.
 - **Stubs, supervisor, and control plane** — FastAPI `TestClient` for the stubs (each acts once per idempotency key) and for the control-plane endpoints (with Temporal and the supervisor mocked). The supervisor gets its own tests: start, stop, status, and waiting for readiness.
 - **Frontend** — not a priority; the panel is vanilla HTML/JS, so at most a couple of smoke checks.
