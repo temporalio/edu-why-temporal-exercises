@@ -1,4 +1,4 @@
-.PHONY: help temporal stop payment restaurant dispatch order-app worker run panel test
+.PHONY: help temporal stop payment restaurant dispatch order-app worker run panel control-plane test
 
 help: ## Show the available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -27,8 +27,11 @@ worker: ## Run the Worker (needs the dev server running)
 run: ## Place an order and watch it flow (needs server, payment, restaurant, dispatch, and Worker up)
 	uv run python -m delivery.starter
 
-panel: ## Serve the chaos panel UI (http://localhost:8080)
+panel: ## Serve the chaos panel UI on its own, unwired (http://localhost:8080)
 	uv run python -m http.server 8080 --directory frontend
+
+control-plane: ## Run the control plane, which also serves the panel (http://localhost:8085)
+	uv run python -m uvicorn delivery.control_plane:app --port 8085
 
 test: ## Run the test suite (no Docker needed; uses the time-skipping test server)
 	uv run --group dev python -m pytest

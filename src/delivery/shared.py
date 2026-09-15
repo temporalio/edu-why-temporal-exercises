@@ -14,3 +14,8 @@ RESTAURANT_URL = "http://localhost:8082"
 
 # Where the dispatch service stub listens.
 DISPATCH_URL = "http://localhost:8083"
+
+# Where the order app listens. The control plane places orders through it rather
+# than starting Workflows itself, so that killing the app really does stop new
+# orders.
+ORDER_APP_URL = "http://localhost:8084"
