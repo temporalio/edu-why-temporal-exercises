@@ -6,6 +6,7 @@ isolation: that it runs each step and returns its result. The real HTTP path to
 the stubs is covered by the integration test in a later PR.
 """
 
+import asyncio
 import uuid
 from datetime import timedelta
 
@@ -199,3 +200,90 @@ async def test_order_waits_for_the_delivered_signal():
             result = await handle.result()
 
     assert result.driver_id == "drv-42"
+
+
+async def wait_for_step(handle, expected: str) -> str:
+    """The Workflow's reported step, once it settles on `expected`.
+
+    Returns whatever it last said, so a failed assertion names the state the
+    order was really in rather than just reporting a timeout.
+    """
+    seen = ""
+
+    for _ in range(250):
+        seen = await handle.query(OrderWorkflow.current_step)
+        if seen == expected:
+            return seen
+        await asyncio.sleep(0.02)
+
+    return seen
+
+
+async def test_the_progress_query_names_every_state_in_turn():
+    """The panel reads the order's position by asking the Workflow.
+
+    The Workflow already knows where it is, so asking it is a more honest source
+    than inferring the position from event history. It answers with one of six
+    stable keys, one per step on the panel plus `complete`, so there is nothing
+    for the panel to derive.
+
+    The keys say nothing about retrying. The Workflow only knows it is awaiting
+    an Activity, not that the Activity keeps failing, so that gets inferred from
+    the service being stopped instead.
+
+    Each Activity is held open until this test releases it, which pins every
+    state long enough to ask about. Letting the Activities merely be slow would
+    make this a race, and a state that passes too quickly is a state the test
+    skips without telling anyone.
+    """
+    release_charge = asyncio.Event()
+    release_restaurant = asyncio.Event()
+    release_dispatch = asyncio.Event()
+
+    @activity.defn(name="charge_payment")
+    async def held_charge(order: Order) -> str:
+        await release_charge.wait()
+        return f"ch-{order.order_id}"
+
+    @activity.defn(name="send_to_restaurant")
+    async def held_restaurant(order: Order) -> str:
+        await release_restaurant.wait()
+        return f"tkt-{order.order_id}"
+
+    @activity.defn(name="dispatch_driver")
+    async def held_dispatch(order: Order) -> str:
+        await release_dispatch.wait()
+        return f"dsp-{order.order_id}"
+
+    order = an_order()
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
+            task_queue=TASK_QUEUE,
+            workflows=[OrderWorkflow],
+            activities=[held_charge, held_restaurant, held_dispatch],
+        ):
+            handle = await env.client.start_workflow(
+                OrderWorkflow.run,
+                order,
+                id=order.order_id,
+                task_queue=TASK_QUEUE,
+            )
+
+            assert await wait_for_step(handle, "charging_payment") == "charging_payment"
+
+            release_charge.set()
+            assert await wait_for_step(handle, "sending_to_restaurant") == "sending_to_restaurant"
+
+            release_restaurant.set()
+            assert await wait_for_step(handle, "waiting_for_kitchen") == "waiting_for_kitchen"
+
+            await handle.signal("kitchen_ready")
+            assert await wait_for_step(handle, "dispatching_driver") == "dispatching_driver"
+
+            release_dispatch.set()
+            assert await wait_for_step(handle, "waiting_for_delivery") == "waiting_for_delivery"
+
+            await handle.signal("delivered", f"drv-{order.order_id}")
+            await handle.result()
+            assert await handle.query(OrderWorkflow.current_step) == "complete"
