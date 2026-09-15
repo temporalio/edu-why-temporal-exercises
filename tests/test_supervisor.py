@@ -14,8 +14,10 @@ no ports.
 """
 
 import os
+import shlex
 import signal
 import subprocess
+import sys
 import time
 
 import pytest
@@ -268,7 +270,12 @@ def test_output_survives_a_process_that_is_killed_rather_than_exiting(tmp_path):
     supervisor = Supervisor(
         {
             "announcer": ProcessDefinition(
-                command='python3 -c "print(\'announced\'); import time; time.sleep(300)"',
+                # sys.executable, not a bare `python3`, so it's the interpreter
+                # running the tests rather than whatever the shell finds on PATH.
+                command=(
+                    f"{shlex.quote(sys.executable)} -c "
+                    "\"print('announced'); import time; time.sleep(300)\""
+                ),
                 match="[n]othing-matches-this",
             )
         },

@@ -24,7 +24,7 @@ class ProcessDefinition:
     """How to launch a managed process.
 
     `command` is run through a shell, the same way the Makefile runs it. `match`
-    is a pattern that recognises an instance already running, for the case where
+    is a pattern that recognizes an instance already running, for the case where
     the supervisor has no handle on it (started by hand, or left behind by an
     earlier run).
 
