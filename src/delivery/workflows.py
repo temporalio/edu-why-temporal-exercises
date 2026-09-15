@@ -57,10 +57,10 @@ class OrderWorkflow:
 
     @workflow.run
     async def run(self, order: Order) -> OrderResult:
-        workflow.logger.info(f"[order]      order {order.order_id}: started")
+        workflow.logger.info(f"[order]      {order.order_id}: started")
 
         self._current_step = "charging_payment"
-        workflow.logger.info(f"[order]      order {order.order_id}: charging payment")
+        workflow.logger.info(f"[order]      {order.order_id}: charging payment")
         charge_id = await workflow.execute_activity(
             charge_payment,
             order,
@@ -69,7 +69,7 @@ class OrderWorkflow:
         )
 
         self._current_step = "sending_to_restaurant"
-        workflow.logger.info(f"[order]      order {order.order_id}: sending to the restaurant")
+        workflow.logger.info(f"[order]      {order.order_id}: sending to the restaurant")
         ticket_id = await workflow.execute_activity(
             send_to_restaurant,
             order,
@@ -82,12 +82,12 @@ class OrderWorkflow:
         # the honest model is to wait for an external signal, not a timer. This is
         # also the calm place to kill the Worker and watch the order resume.
         self._current_step = "waiting_for_kitchen"
-        workflow.logger.info(f"[order]      order {order.order_id}: waiting on the kitchen")
+        workflow.logger.info(f"[order]      {order.order_id}: waiting on the kitchen")
         await workflow.wait_condition(lambda: self._kitchen_ready)
-        workflow.logger.info(f"[order]      order {order.order_id}: kitchen ready")
+        workflow.logger.info(f"[order]      {order.order_id}: kitchen ready")
 
         self._current_step = "dispatching_driver"
-        workflow.logger.info(f"[order]      order {order.order_id}: dispatching a driver")
+        workflow.logger.info(f"[order]      {order.order_id}: dispatching a driver")
         dispatch_id = await workflow.execute_activity(
             dispatch_driver,
             order,
@@ -100,12 +100,12 @@ class OrderWorkflow:
         # carries the id of the driver who delivered it. A second calm place to
         # kill the Worker and watch the order resume.
         self._current_step = "waiting_for_delivery"
-        workflow.logger.info(f"[order]      order {order.order_id}: waiting on delivery")
+        workflow.logger.info(f"[order]      {order.order_id}: waiting on delivery")
         await workflow.wait_condition(lambda: self._delivered)
-        workflow.logger.info(f"[order]      order {order.order_id}: delivered by {self._driver_id}")
+        workflow.logger.info(f"[order]      {order.order_id}: delivered by {self._driver_id}")
 
         self._current_step = "complete"
-        workflow.logger.info(f"[order]      order {order.order_id}: complete")
+        workflow.logger.info(f"[order]      {order.order_id}: complete")
         return OrderResult(
             order_id=order.order_id,
             charge_id=charge_id,
