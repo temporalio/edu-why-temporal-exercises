@@ -14,6 +14,9 @@ service, and until the control plane owns those processes every service is
 assumed to be up.
 """
 
+import asyncio
+import time
+
 from fastapi.testclient import TestClient
 
 from delivery.control_plane import create_app, panel_steps
@@ -43,6 +46,24 @@ class FakeWorkflowHandle:
     async def query(self, query):
         self.queried.append(query)
         return self.current_step
+
+    async def signal(self, signal, *arguments):
+        self.signalled.append((signal, arguments))
+
+
+class HangingWorkflowHandle:
+    """A handle whose query never answers, the way it behaves with no Worker.
+
+    A query is executed by a Worker, so with none running the call doesn't fail
+    fast, it waits. Measured against a real server: ~29 seconds before the SDK
+    gives up retrying.
+    """
+
+    def __init__(self) -> None:
+        self.signalled: list = []
+
+    async def query(self, query):
+        await asyncio.Event().wait()  # never set, so this never returns
 
     async def signal(self, signal, *arguments):
         self.signalled.append((signal, arguments))
@@ -105,6 +126,43 @@ def test_state_reports_the_progress_of_the_order_that_was_placed():
         {"key": "dispatch", "status": "upcoming"},
         {"key": "delivery", "status": "upcoming"},
     ]
+
+
+async def test_state_answers_promptly_when_the_progress_query_cannot_be_answered():
+    """A dead Worker must not hold the panel hostage.
+
+    Only a Worker can answer a query, so with none running the call waits
+    rather than failing: ~29 seconds against a real server, because the SDK
+    retries. The panel polls every 700ms, so an unbounded wait here stacks
+    dozens of in-flight requests and the panel shows nothing at all while it
+    happens, which is what a learner reported as the UI lagging.
+
+    So `/state` bounds the query and answers with what it last knew, marked as
+    no longer confirmed. Reporting the last known steps rather than nothing
+    keeps the panel drawn; the flag is what lets it say the truth about them.
+    """
+    order_app = FakeOrderApp(order_id="order-abc123")
+    temporal = FakeTemporal(current_step="waiting_for_kitchen")
+
+    async def connect() -> FakeTemporal:
+        return temporal
+
+    panel = TestClient(create_app(place_order=order_app.place_order, connect=connect))
+
+    panel.post("/orders")
+    good = panel.get("/state").json()
+    assert good["order"]["progress_confirmed"] is True
+
+    # The Worker goes away, so the query stops answering.
+    temporal.handle = HangingWorkflowHandle()
+
+    started = time.monotonic()
+    stale = panel.get("/state").json()
+    waited = time.monotonic() - started
+
+    assert waited < 5, f"/state waited {waited:.1f}s on an unanswerable query"
+    assert stale["order"]["progress_confirmed"] is False
+    assert stale["order"]["steps"] == good["order"]["steps"]  # the last it knew
 
 
 def test_state_reports_no_order_before_one_has_been_placed():

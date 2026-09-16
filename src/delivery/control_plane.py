@@ -17,6 +17,7 @@ control plane owns the service processes, nothing here can tell a stopped
 service from a running one, so every service is assumed up.
 """
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,15 @@ class PanelStep:
 # The query's sixth key. It names no step, because by then the order has passed
 # all five.
 COMPLETE = "complete"
+
+# How long to wait for the progress query before giving up on it.
+#
+# A Worker is what executes a query, so with none running the call doesn't fail,
+# it waits, and the SDK's retries stretch that to about 29 seconds. The panel
+# polls every 700ms, so an unbounded wait leaves it drawing nothing while
+# requests stack up behind each other. Generous next to a healthy query, which
+# answers in milliseconds.
+PROGRESS_TIMEOUT_SECONDS = 2.0
 
 # The panel's five steps in order. `key` is the panel's name for the step and
 # `workflow_step` is what the progress query calls it, so this table is the only
@@ -126,6 +136,10 @@ def create_app(
     # else then has to be told which order is the current one.
     current_order_id: Optional[str] = None
 
+    # The last progress we could confirm. Served when the query can't answer,
+    # so the panel keeps showing where the order got to rather than going blank.
+    last_known_steps: Optional[list] = None
+
     async def temporal() -> Client:
         nonlocal client
         if client is None:
@@ -167,15 +181,37 @@ def create_app(
 
     @app.get("/state")
     async def get_state() -> dict:
+        nonlocal last_known_steps
+
         if current_order_id is None:
             return {"order": None}
 
-        current_step = await (await current_order()).query(OrderWorkflow.current_step)
+        try:
+            current_step = await asyncio.wait_for(
+                (await current_order()).query(OrderWorkflow.current_step),
+                PROGRESS_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            # Broad on purpose. Any reason the query didn't answer means the
+            # same thing to the panel: we can't confirm where the order is. The
+            # response says so rather than hiding it, and the last known steps
+            # keep the panel drawn instead of blank. Only the query sits inside
+            # the try, so a real bug in the translation below still surfaces.
+            return {
+                "order": {
+                    "id": current_order_id,
+                    "steps": last_known_steps or [],
+                    "progress_confirmed": False,
+                }
+            }
+
+        last_known_steps = panel_steps(current_step)
 
         return {
             "order": {
                 "id": current_order_id,
-                "steps": panel_steps(current_step),
+                "steps": last_known_steps,
+                "progress_confirmed": True,
             }
         }
 

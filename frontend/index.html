@@ -221,7 +221,11 @@
   // and nothing else, until the supervisor is wired up and can really stop a
   // process. Until then a service cannot be reported as down, so nothing ever
   // shows as retrying.
-  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null };
+  // `loaded` separates "there is no order" from "we haven't heard yet". They
+  // look identical in `order: null` and mean opposite things: the first should
+  // enable the Place order button, the second must not, or a refresh while an
+  // order is running offers a button that would start a second one.
+  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null, loaded: false };
 
   // The server says only which step each one is on. The panel keeps the labels
   // and the shapes, so the two are merged by key.
@@ -252,15 +256,25 @@
     };
   }
 
+  // One poll at a time. The interval fires every 700ms, so a request that takes
+  // longer than that would stack up behind itself.
+  let polling = false;
+
   async function poll() {
+    if (polling) return;
+    polling = true;
+
     try {
       const response = await fetch("/state");
       state.order = orderFromServer(await response.json());
+      state.loaded = true;
     } catch (err) {
       // The control plane is the one thing the demo cannot switch off, so a
       // failure here is a real fault rather than part of the lesson. Leave the
       // last known state on screen instead of blanking the panel.
       console.error("control plane unreachable", err);
+    } finally {
+      polling = false;
     }
 
     render();
@@ -271,7 +285,7 @@
     const pill = document.getElementById("status-pill");
     pill.className = "status-pill" + (o ? " " + o.status : "");
     document.getElementById("status-text").textContent =
-      !o ? "No order" : (o.status === "complete" ? "Complete" : (state.worker ? "Running" : "Paused"));
+      !state.loaded ? "Checking" : !o ? "No order" : (o.status === "complete" ? "Complete" : (state.worker ? "Running" : "Paused"));
     document.getElementById("order-id").textContent = o ? o.id : "";
     const nar = narration();
     const nb = document.getElementById("narration");
@@ -327,6 +341,7 @@
   // teaching voice here is Wade's to rewrite.
   function narration() {
     const o = state.order;
+    if (!state.loaded) return { tone: "idle", text: "Checking with the control plane for the current order." };
     if (!o) return state.app
       ? { tone: "idle", text: "No order yet. Place one to watch it move through the steps." }
       : { tone: "down", text: "The order app is down, so no new orders can be placed. Bring it back up to start one." };
@@ -354,8 +369,8 @@
 
     const btn = document.getElementById("place-btn");
     const running = state.order && state.order.status === "running";
-    btn.disabled = !state.app || running;
-    btn.textContent = !state.app ? "App is down" : running ? "One at a time" : "Place order";
+    btn.disabled = !state.loaded || !state.app || running;
+    btn.textContent = !state.loaded ? "Checking" : !state.app ? "App is down" : running ? "One at a time" : "Place order";
   }
 
   function makeToggle(name, on, onLabel, offLabel, onChange, aria) {
@@ -395,8 +410,14 @@
     poll();
   };
 
-  setInterval(poll, 700);
+  // Draw immediately from what we already know, then go and get the truth.
+  // Without this first render the panel is an unpopulated shell until the first
+  // response lands, so a slow or failing /state looks like a broken page rather
+  // than a page waiting.
+  render();
+
   poll();
+  setInterval(poll, 700);
 </script>
 </body>
 </html>
