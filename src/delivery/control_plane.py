@@ -46,6 +46,10 @@ class PanelStep:
     service: Optional[str]
 
 
+# The query's sixth key. It names no step, because by then the order has passed
+# all five.
+COMPLETE = "complete"
+
 # The panel's five steps in order. `key` is the panel's name for the step and
 # `workflow_step` is what the progress query calls it, so this table is the only
 # place the two vocabularies meet.
@@ -65,7 +69,10 @@ def panel_steps(current_step: str) -> list[dict]:
     lies ahead is upcoming, and the step it sits on takes the status matching
     what that step actually does.
     """
-    reached = [step.workflow_step for step in STEPS].index(current_step)
+    if current_step == COMPLETE:
+        reached = len(STEPS)  # past every step, so all five read as done
+    else:
+        reached = [step.workflow_step for step in STEPS].index(current_step)
 
     drawn = []
 
@@ -77,7 +84,7 @@ def panel_steps(current_step: str) -> list[dict]:
         elif step.service is None:
             status = "waiting"  # parks on a signal rather than calling out
         else:
-            status = "running"
+            status = "in-progress"
 
         drawn.append({"key": step.key, "status": status})
 

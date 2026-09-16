@@ -200,3 +200,27 @@ def test_the_order_walks_from_done_through_the_current_step_to_upcoming():
         {"key": "dispatch", "status": "upcoming"},
         {"key": "delivery", "status": "upcoming"},
     ]
+
+
+def test_a_step_that_calls_a_service_is_in_progress_rather_than_waiting():
+    """`in-progress` and `waiting` are different states to a learner.
+
+    A call step is doing something; a wait step is parked on someone else. The
+    panel draws them differently, and `in-progress` is the word its own markup
+    and stylesheet use, so that is the word the control plane has to send.
+    """
+    steps = panel_steps("charging_payment")
+
+    assert steps[0] == {"key": "charge", "status": "in-progress"}
+
+
+def test_a_complete_order_shows_every_step_done():
+    """`complete` is the sixth key, and it names no step on the panel.
+
+    The order has passed all five by then, so the panel draws them all done.
+    Without this the query's own vocabulary would crash the translation at the
+    exact moment an order finishes.
+    """
+    steps = panel_steps("complete")
+
+    assert [step["status"] for step in steps] == ["done"] * 5
