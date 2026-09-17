@@ -216,11 +216,9 @@
     dispatch:   { name: "Orders Dispatched" },
   };
 
-  // The order is real and comes from the control plane. The services, the
-  // worker and the app are still faked here: their toggles change this object
-  // and nothing else, until the supervisor is wired up and can really stop a
-  // process. Until then a service cannot be reported as down, so nothing ever
-  // shows as retrying.
+  // Everything here mirrors what the control plane reports, so the flags
+  // describe real processes rather than what was last clicked.
+  //
   // `loaded` separates "there is no order" from "we haven't heard yet". They
   // look identical in `order: null` and mean opposite things: the first should
   // enable the Place order button, the second must not, or a refresh while an
@@ -256,6 +254,36 @@
     };
   }
 
+  // The control plane reports the five components flat. The panel groups the
+  // three services, because the pipeline draws their switches on the steps that
+  // call them rather than in the lever row.
+  function componentsFromServer(components) {
+    state.services.payment = components.payment;
+    state.services.restaurant = components.restaurant;
+    state.services.dispatch = components.dispatch;
+    state.worker = components.worker;
+    state.app = components.app;
+  }
+
+  // Switching a component is the control plane's job, so the panel asks and
+  // then re-reads rather than deciding for itself. A request that fails leaves
+  // the state untouched, and the poll it triggers snaps the switch back to the
+  // truth.
+  async function setComponent(name, up) {
+    try {
+      const response = await fetch(`/components/${name}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ up }),
+      });
+      if (!response.ok) throw new Error(`control plane answered ${response.status}`);
+    } catch (err) {
+      console.error(`could not switch ${name}`, err);
+    }
+
+    poll();
+  }
+
   // One poll at a time. The interval fires every 700ms, so a request that takes
   // longer than that would stack up behind itself.
   let polling = false;
@@ -266,7 +294,9 @@
 
     try {
       const response = await fetch("/state");
-      state.order = orderFromServer(await response.json());
+      const payload = await response.json();
+      state.order = orderFromServer(payload);
+      componentsFromServer(payload.components);
       state.loaded = true;
     } catch (err) {
       // The control plane is the one thing the demo cannot switch off, so a
@@ -314,7 +344,7 @@
         </div>`;
       pipe.appendChild(li);
     });
-    pipe.querySelectorAll("[data-svc]").forEach(sw => sw.onchange = () => { state.services[sw.dataset.svc] = sw.checked; render(); });
+    pipe.querySelectorAll("[data-svc]").forEach(sw => sw.onchange = () => setComponent(sw.dataset.svc, sw.checked));
     if (o) pipe.querySelectorAll("[data-signal]").forEach(b => b.onclick = RELEASE_WAIT[b.dataset.signal]);
 
     const led = document.getElementById("ledgers");
@@ -364,8 +394,8 @@
   function renderControls() {
     const slot = document.getElementById("lever-slot");
     slot.innerHTML = "";
-    slot.appendChild(makeToggle("Order app", state.app, "Up", "Down", v => { state.app = v; render(); }, "Order app up"));
-    slot.appendChild(makeToggle("Worker", state.worker, "Up", "Down", v => { state.worker = v; render(); }, "Worker running"));
+    slot.appendChild(makeToggle("Order app", state.app, "Up", "Down", v => setComponent("app", v), "Order app up"));
+    slot.appendChild(makeToggle("Worker", state.worker, "Up", "Down", v => setComponent("worker", v), "Worker running"));
 
     const btn = document.getElementById("place-btn");
     const running = state.order && state.order.status === "running";
