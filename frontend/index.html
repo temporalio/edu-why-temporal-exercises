@@ -216,37 +216,68 @@
     dispatch:   { name: "Orders Dispatched" },
   };
 
-  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null };
-  const rid = (n = 8) => Math.random().toString(16).slice(2, 2 + n);
+  // The order is real and comes from the control plane. The services, the
+  // worker and the app are still faked here: their toggles change this object
+  // and nothing else, until the supervisor is wired up and can really stop a
+  // process. Until then a service cannot be reported as down, so nothing ever
+  // shows as retrying.
+  // `loaded` separates "there is no order" from "we haven't heard yet". They
+  // look identical in `order: null` and mean opposite things: the first should
+  // enable the Place order button, the second must not, or a refresh while an
+  // order is running offers a button that would start a second one.
+  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null, loaded: false };
 
-  function newOrder() {
-    return { id: "order-" + rid(), cursor: 0, progress: 0, status: "running",
-      kitchenReady: false, delivered: false, driverId: null,
-      steps: STEPS.map(s => ({ ...s, status: "upcoming" })),
-      ledger: { charge: null, restaurant: null, dispatch: null } };
+  // The server says only which step each one is on. The panel keeps the labels
+  // and the shapes, so the two are merged by key.
+  function orderFromServer(payload) {
+    if (!payload.order) return null;
+
+    const reported = {};
+    payload.order.steps.forEach(step => reported[step.key] = step.status);
+    const steps = STEPS.map(step => ({ ...step, status: reported[step.key] || "upcoming" }));
+
+    // The first step not yet done is where the order sits. All five done means
+    // it finished.
+    let cursor = steps.findIndex(step => step.status !== "done");
+    const complete = cursor === -1;
+    if (complete) cursor = steps.length;
+
+    // A finished call step means that service acted, which is all the ledgers
+    // show. Derived here rather than reported, so the server needn't track it.
+    const ledger = { charge: null, restaurant: null, dispatch: null };
+    steps.forEach(step => { if (step.svc && step.status === "done") ledger[step.key] = 1; });
+
+    return {
+      id: payload.order.id,
+      steps,
+      cursor,
+      ledger,
+      status: complete ? "complete" : "running",
+    };
   }
 
-  function tick() {
-    const o = state.order;
-    if (!o || o.status === "complete") return;
-    if (!state.worker) return;
-    const step = o.steps[o.cursor];
-    if (step.type === "call") {
-      if (!state.services[step.svc]) { step.status = "retrying"; o.progress = 0; }
-      else {
-        step.status = "in-progress"; o.progress += 1;
-        if (o.progress >= 2) {
-          step.status = "done";
-          if (o.ledger[step.key] === null) o.ledger[step.key] = 1;
-          o.cursor += 1; o.progress = 0;
-        }
-      }
-    } else {
-      step.status = "waiting";
-      const ready = step.key === "kitchen" ? o.kitchenReady : o.delivered;
-      if (ready) { step.status = "done"; o.cursor += 1; }
+  // One poll at a time. The interval fires every 700ms, so a request that takes
+  // longer than that would stack up behind itself.
+  let polling = false;
+
+  async function poll() {
+    if (polling) return;
+    polling = true;
+
+    try {
+      const response = await fetch("/state");
+      state.order = orderFromServer(await response.json());
+      state.loaded = true;
+    } catch (err) {
+      // The control plane is the one thing the demo cannot switch off, so a
+      // failure here is a real fault rather than part of the lesson. Leave the
+      // last known state on screen instead of blanking the panel.
+      console.error("control plane unreachable", err);
+    } finally {
+      polling = false;
     }
-    if (o.cursor >= o.steps.length) o.status = "complete";
+
+    render();
   }
 
   function render() {
@@ -254,7 +285,7 @@
     const pill = document.getElementById("status-pill");
     pill.className = "status-pill" + (o ? " " + o.status : "");
     document.getElementById("status-text").textContent =
-      !o ? "No order" : (o.status === "complete" ? "Complete" : (state.worker ? "Running" : "Paused"));
+      !state.loaded ? "Checking" : !o ? "No order" : (o.status === "complete" ? "Complete" : (state.worker ? "Running" : "Paused"));
     document.getElementById("order-id").textContent = o ? o.id : "";
     const nar = narration();
     const nb = document.getElementById("narration");
@@ -284,7 +315,7 @@
       pipe.appendChild(li);
     });
     pipe.querySelectorAll("[data-svc]").forEach(sw => sw.onchange = () => { state.services[sw.dataset.svc] = sw.checked; render(); });
-    if (o) pipe.querySelectorAll("[data-signal]").forEach(b => b.onclick = () => sendSignal(b.getAttribute("data-signal")));
+    if (o) pipe.querySelectorAll("[data-signal]").forEach(b => b.onclick = RELEASE_WAIT[b.dataset.signal]);
 
     const led = document.getElementById("ledgers");
     led.innerHTML = "";
@@ -310,6 +341,7 @@
   // teaching voice here is Wade's to rewrite.
   function narration() {
     const o = state.order;
+    if (!state.loaded) return { tone: "idle", text: "Checking with the control plane for the current order." };
     if (!o) return state.app
       ? { tone: "idle", text: "No order yet. Place one to watch it move through the steps." }
       : { tone: "down", text: "The order app is down, so no new orders can be placed. Bring it back up to start one." };
@@ -337,8 +369,8 @@
 
     const btn = document.getElementById("place-btn");
     const running = state.order && state.order.status === "running";
-    btn.disabled = !state.app || running;
-    btn.textContent = !state.app ? "App is down" : running ? "One at a time" : "Place order";
+    btn.disabled = !state.loaded || !state.app || running;
+    btn.textContent = !state.loaded ? "Checking" : !state.app ? "App is down" : running ? "One at a time" : "Place order";
   }
 
   function makeToggle(name, on, onLabel, offLabel, onChange, aria) {
@@ -352,21 +384,40 @@
     return div;
   }
 
-  function sendSignal(key) {
-    const o = state.order;
-    if (!o) return;
-    if (key === "kitchen") o.kitchenReady = true;
-    if (key === "delivery") { o.delivered = true; o.driverId = "drv-" + rid(6); }
-    render();
+  // The two Finish buttons stand in for the kitchen and the driver, who in the
+  // real world report back on their own. The driver's id is generated by the
+  // control plane, not here.
+  async function reportOrderPrepared() {
+    await fetch("/signals/order_prepared", { method: "POST" });
+
+    poll();
   }
 
-  document.getElementById("place-btn").onclick = () => {
+  async function reportOrderDelivered() {
+    await fetch("/signals/order_delivered", { method: "POST" });
+
+    poll();
+  }
+
+  // Which Finish button releases which wait.
+  const RELEASE_WAIT = { kitchen: reportOrderPrepared, delivery: reportOrderDelivered };
+
+  document.getElementById("place-btn").onclick = async () => {
     if (!state.app || (state.order && state.order.status === "running")) return;
-    state.order = newOrder(); render();
+
+    await fetch("/orders", { method: "POST" });
+
+    poll();
   };
 
-  setInterval(() => { tick(); render(); }, 700);
+  // Draw immediately from what we already know, then go and get the truth.
+  // Without this first render the panel is an unpopulated shell until the first
+  // response lands, so a slow or failing /state looks like a broken page rather
+  // than a page waiting.
   render();
+
+  poll();
+  setInterval(poll, 700);
 </script>
 </body>
 </html>

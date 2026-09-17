@@ -38,8 +38,10 @@ One food-delivery order, three lenses:
 - **Service stubs** (payment, restaurant, dispatch) — plain services carrying no chaos machinery of their own. "Off" means the process is stopped, so the call fails outright and the step retries until it's back.
 - **Worker** — runs the Workflow. Killed with `kill -9` (a real, ungraceful crash, no clean shutdown), then respawned. Identical local or in Instruqt, since it's just a process and a signal.
 - **Order app** — the front door. A small service that accepts a place-order request and starts the Workflow. Kill it and no new orders can be placed, while anything already running carries on, because Temporal, not the app, is executing it.
-- **Process supervisor** — the shared piece under all the chaos: starts, stops, and reports on the managed child processes (Worker, the three stubs, the order app), and waits for a restarted one to become ready. A module first, driven directly by the integration tests, and later by the control plane.
-- **Control plane plus themed frontend** — the always-on backend the panel talks to: places orders, drives the supervisor to stop and start components, and reads Workflow progress to drive the view.
+- **Process supervisor** — the shared piece under all the chaos: starts, stops, and reports on the managed child processes (Worker, the three stubs, the order app). It does *not* wait for a restarted process to be ready, and deliberately: existence is the signal, because Temporal retries until the service actually answers, so readiness costs complexity and buys nothing. Each process writes to its own log file, which is how a failure inside a managed process gets diagnosed at all. A module first, exercised directly by tests, and later driven by the control plane.
+- **Control plane plus themed frontend** — the always-on backend the panel talks to, and the only thing besides Temporal the panel cannot switch off, because it is the thing doing the switching. It serves the panel's own files, so there is one origin and no CORS. It **proxies** place-order requests to the order app rather than starting Workflows itself: if it talked to Temporal directly, the app could be dead and the panel would keep placing orders, teaching the opposite of the app-down lesson. The order id comes back through that proxy, which is how the control plane knows which order to ask about. It also drives the supervisor to stop and start components, reads Workflow progress, and sends the two waits their signals, standing in for the kitchen and the driver.
+
+  Translating progress is its own job. The query answers with one of six keys; the panel draws five steps, each needing a status, and two of those statuses aren't in the Workflow's vocabulary. `waiting` separates the steps that park on a signal from those that call a service, and `retrying` has to be inferred from a stopped service, since the Workflow knows only that it is awaiting an Activity.
 
 **The toggles.** Most follow one pattern, break it, watch the order survive:
 
@@ -59,12 +61,14 @@ Ships as a sequence of small, independently reviewable PRs. Small, self-containe
 2. **First slice** — Workflow skeleton plus charge-payment plus payment stub, end to end, idempotent, tested.
 3. **Remaining steps** — restaurant, kitchen, dispatch, delivery, added incrementally (one PR each, paired if trivial); each leaves `main` a working, shorter order.
 4. **Chaos panel (mocked)** — the self-contained vanilla panel (order, progress, ledgers, and the chaos controls), every interaction faked in the browser. Lands the UI, and by doing so freezes the contract the control plane will have to satisfy. No backend yet.
-5. **Process supervisor** — start, stop, and status for the managed child processes, plus waiting for a restarted one to be ready. The shared foundation both chaos steps rest on; a module first, exercised directly by tests.
-6. **Dependency outage** — stop a service stub mid-order; the step retries and the order survives; start it again and the order completes. *(Integration test.)*
-7. **Worker chaos** — `kill -9` the Worker mid-order, then respawn: it resumes where it left off and nothing double-acts. *(The crown jewel; its own PR.)*
+5. **Process supervisor** — start, stop, and status for the managed child processes, each logging to its own file. No readiness wait; existence is the signal. The shared foundation both chaos steps rest on; a module first, exercised directly by tests.
+6. **Dependency outage** — stop a service stub mid-order; the step retries and the order survives; start it again and the order completes.
+7. **Worker chaos** — `kill -9` the Worker mid-order, then respawn: it resumes where it left off and nothing double-acts.
 8. **Order app** — the front-door service that accepts a place-order request and starts the Workflow. Killing it stops new orders while in-flight ones keep running.
-9. **Control plane** — the panel-facing API: place an order, read progress, and drive the supervisor for every component.
-10. **Wire the panel** — swap the panel's faked state for real calls to the control plane, one capability at a time as its endpoint lands.
+9. **Control plane** — the panel-facing backend, wired one control at a time rather than all at once, so each PR leaves something visibly working:
+   1. *Place, watch, and release.* Proxy `POST /orders`, serve the panel, answer `GET /state` with the order's five step statuses, and signal the two waits. The panel stops being a mock: click the button, the bar walks all five steps, and the Finish buttons release the kitchen and delivery waits.
+   2. *The toggles.* Drive the supervisor from the panel, and report each component's state from it. This step requires the control plane to **launch** every service, since the supervisor can only stop what it started, which also delivers the one-command run early. It has to check the Worker before querying progress, because with the Worker down the query hangs for its full timeout rather than failing fast.
+10. **Wire the panel** — folded into step 9, one capability at a time as its endpoint lands, rather than a separate pass at the end.
 11. **Finish** — Insight (link the real Web UI), polish, and a one-command run.
 12. **Instruqt adaptation** — package the working standalone demo to run in an Instruqt lab: provisioning the environment and exposing the chaos panel and Temporal Web UI as browser tabs. The process-and-signal kills should carry over cleanly, so this is mostly packaging, not a rebuild. A distinct phase, taken on only once the standalone demo is solid.
 
@@ -74,10 +78,10 @@ Test-first, red-green-refactor. The **red** step matters most: confirm the test 
 
 - **Workflow** — `WorkflowEnvironment` with time-skipping and mocked Activities. Key cases: the happy path completes; a fail-then-succeed Activity is retried and still completes; the progress query names every state in turn, with each Activity held open on an event so no state slips past unobserved; and the single most important one, **exactly-once**, no mutating step double-acts under retry (payment the headline).
 - **Activities** — `ActivityEnvironment`: each Activity's success and its survivable failure.
-- **Stubs, supervisor, and control plane** — FastAPI `TestClient` for the stubs (each acts once per idempotency key) and for the control-plane endpoints (with Temporal and the supervisor mocked). The supervisor gets its own tests: start, stop, status, and waiting for readiness.
+- **Stubs, supervisor, and control plane** — FastAPI `TestClient` for the stubs (each acts once per idempotency key) and for the control-plane endpoints (with Temporal and the order app faked through injected seams). The supervisor gets its own tests: start, stop, and status, including the cases that only show up with real processes, a forked child that outlives its parent and a zombie that still answers to a pid check.
 - **Frontend** — not a priority; the panel is vanilla HTML/JS, so at most a couple of smoke checks.
 
-One honest boundary: anything that turns on really killing a process (the dependency outage, and the Worker kill-and-resume) is an *integration* property, so those are scripted end-to-end checks rather than unit tests.
+One honest boundary: anything that turns on really killing a process (the dependency outage, and the Worker kill-and-resume) is an *integration* property, and we deliberately don't automate it. We test each side of every boundary and verify the whole by hand. The demo's normal operation *is* that test, so a regression can't hide for long, and a slow end-to-end suite sitting outside the fast one would go stale and get ignored.
 
 ## Reference
 
