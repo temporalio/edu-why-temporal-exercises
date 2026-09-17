@@ -12,24 +12,26 @@ steps, each needing a status. Two of those statuses aren't in the Workflow's
 vocabulary: `waiting` separates the steps that park on a signal from the ones
 that call a service, and `retrying` will have to be inferred from a stopped
 service, because the Workflow knows only that it is awaiting an Activity, not
-that the Activity keeps failing. `retrying` waits on the supervisor: until the
-control plane owns the service processes, nothing here can tell a stopped
-service from a running one, so every service is assumed up.
+that the Activity keeps failing. `retrying` is not drawn yet. The supervisor
+reports which services are up, so the information needed to infer it is here;
+using it is its own step.
 """
 
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from temporalio.client import Client
 
 from delivery.shared import ORDER_APP_URL, TEMPORAL_TARGET
+from delivery.supervisor import ProcessDefinition, Supervisor
 from delivery.workflows import OrderWorkflow
 
 
@@ -105,6 +107,17 @@ class PlacedOrder(BaseModel):
     order_id: str
 
 
+class ComponentSwitch(BaseModel):
+    """The desired state of one component, as the panel's checkbox sees it.
+
+    Desired state rather than a `start` or `stop` verb, so that sending it twice
+    means the same as sending it once. The panel control is a checkbox, and two
+    clicks or two racing polls must not compound.
+    """
+
+    up: bool
+
+
 async def place_order() -> str:
     """Ask the order app to start an order, and hand back its id."""
     async with httpx.AsyncClient() as http:
@@ -123,11 +136,82 @@ async def connect_to_temporal() -> Client:
     return await Client.connect(TEMPORAL_TARGET)
 
 
+# Each managed process's own log file lands here, beside the source rather than
+# inside the package, for the same reason the panel does: this runs from the
+# repo.
+LOG_DIRECTORY = Path(__file__).resolve().parents[2] / "logs"
+
+# The processes the control plane owns, keyed by **the panel's** names for them.
+# `app` rather than `order-app`, because the panel froze that vocabulary when it
+# was a mock and the backend conforms to it.
+#
+# The commands mirror the Makefile targets. That's a third copy of each port,
+# after the Makefile and `shared.py`, and worth collapsing at some point.
+#
+# Each `match` is a module path, which satisfies the supervisor's requirement
+# that the pattern appear in every process in the tree: `uv run python -m
+# uvicorn delivery.stubs.payment:app` and the child it forks both carry it.
+MANAGED_PROCESSES = {
+    "payment": ProcessDefinition(
+        command="uv run python -m uvicorn delivery.stubs.payment:app --port 8081",
+        match="delivery.stubs.payment",
+    ),
+    "restaurant": ProcessDefinition(
+        command="uv run python -m uvicorn delivery.stubs.restaurant:app --port 8082",
+        match="delivery.stubs.restaurant",
+    ),
+    "dispatch": ProcessDefinition(
+        command="uv run python -m uvicorn delivery.stubs.dispatch:app --port 8083",
+        match="delivery.stubs.dispatch",
+    ),
+    "app": ProcessDefinition(
+        command="uv run python -m uvicorn delivery.order_app:app --port 8084",
+        match="delivery.order_app",
+    ),
+    "worker": ProcessDefinition(
+        command="uv run python -m delivery.worker",
+        match="delivery.worker",
+    ),
+}
+
+# The five names the panel toggles, in the order the panel lists them.
+COMPONENTS = tuple(MANAGED_PROCESSES)
+
+# The one component the progress query depends on.
+WORKER = "worker"
+
+
+def build_supervisor() -> Supervisor:
+    return Supervisor(MANAGED_PROCESSES, log_dir=LOG_DIRECTORY)
+
+
 def create_app(
     place_order: Callable[[], Awaitable[str]] = place_order,
     connect: Callable[[], Awaitable[Client]] = connect_to_temporal,
+    supervisor: Callable[[], Supervisor] = build_supervisor,
 ) -> FastAPI:
-    app = FastAPI(title="Control plane")
+    # Injected as a factory, like `connect`, and called here. A default of
+    # `build_supervisor()` would be evaluated once at import, so every app would
+    # share one supervisor's process table.
+    supervisor = supervisor()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        """Bring the demo up alongside the control plane, and down with it.
+
+        Starting is unconditional rather than going through the same check the
+        toggle uses, because a leftover from an earlier run is exactly what
+        needs clearing here, and `start` clears one before launching.
+        """
+        for name in COMPONENTS:
+            supervisor.start(name)
+
+        yield
+
+        for name in COMPONENTS:
+            supervisor.stop(name)
+
+    app = FastAPI(title="Control plane", lifespan=lifespan)
 
     client: Optional[Client] = None
 
@@ -179,41 +263,84 @@ def create_app(
 
         return {}
 
+    @app.put("/components/{name}")
+    async def put_component(name: str, switch: ComponentSwitch) -> dict:
+        """Bring a component to the state the panel asked for.
+
+        Does nothing when it is already in that state. That matters for the
+        Worker: `start` clears any earlier instance before launching, so acting
+        on a healthy process kills it and puts a replacement in its place, which
+        on the Worker means bouncing it mid-order.
+
+        The response reports what the supervisor says rather than echoing the
+        request, so the panel is told the truth when the two disagree.
+        """
+        if name not in COMPONENTS:
+            raise HTTPException(status_code=404, detail=f"No component named {name!r}")
+
+        running = supervisor.is_running(name)
+
+        if switch.up and not running:
+            supervisor.start(name)
+        elif running and not switch.up:
+            supervisor.stop(name)
+
+        return {"name": name, "up": supervisor.is_running(name)}
+
     @app.get("/state")
     async def get_state() -> dict:
+        """Everything the panel polls for, in one response.
+
+        The components ride along with the order rather than getting their own
+        endpoint, because the panel already polls this every 700ms and a second
+        poll would double the traffic to learn something this one can carry.
+        """
         nonlocal last_known_steps
 
-        if current_order_id is None:
-            return {"order": None}
+        order = None
 
-        try:
-            current_step = await asyncio.wait_for(
-                (await current_order()).query(OrderWorkflow.current_step),
-                PROGRESS_TIMEOUT_SECONDS,
-            )
-        except Exception:
-            # Broad on purpose. Any reason the query didn't answer means the
-            # same thing to the panel: we can't confirm where the order is. The
-            # response says so rather than hiding it, and the last known steps
-            # keep the panel drawn instead of blank. Only the query sits inside
-            # the try, so a real bug in the translation below still surfaces.
-            return {
-                "order": {
+        if current_order_id is not None:
+            current_step = None
+
+            # Only a Worker executes a query, so with none running the call
+            # cannot succeed. It waits and then times out, so don't make it.
+            if supervisor.is_running(WORKER):
+                try:
+                    current_step = await asyncio.wait_for(
+                        (await current_order()).query(OrderWorkflow.current_step),
+                        PROGRESS_TIMEOUT_SECONDS,
+                    )
+                except Exception:
+                    # Broad on purpose. Any reason the query didn't answer means
+                    # the same thing: we can't confirm where the order is. Only
+                    # the query sits inside the try, so a real bug in the
+                    # translation below still surfaces.
+                    pass
+
+            if current_step is None:
+                # Unconfirmed. The last known steps are reported rather than
+                # nothing, so a reader still sees where the order got to, and
+                # the flag is what lets them know it may have moved since.
+                order = {
                     "id": current_order_id,
                     "steps": last_known_steps or [],
                     "progress_confirmed": False,
                 }
-            }
+            else:
+                last_known_steps = panel_steps(current_step)
+                order = {
+                    "id": current_order_id,
+                    "steps": last_known_steps,
+                    "progress_confirmed": True,
+                }
 
-        last_known_steps = panel_steps(current_step)
+        # Read from the supervisor rather than guessed. It is the only thing
+        # that knows: the panel used to track its own switches in the browser,
+        # so a process that died on its own still read as up, and a reload
+        # forgot everything.
+        components = {name: supervisor.is_running(name) for name in COMPONENTS}
 
-        return {
-            "order": {
-                "id": current_order_id,
-                "steps": last_known_steps,
-                "progress_confirmed": True,
-            }
-        }
+        return {"order": order, "components": components}
 
     # Mounted last, so the routes above still match first. `html=True` serves
     # index.html at the root, which is the whole panel.
