@@ -7,6 +7,9 @@ venv/
 *.egg-info/
 .uv/
 
+# Per-process logs written by the supervisor
+logs/
+
 # IDE dirs
 .idea/
 

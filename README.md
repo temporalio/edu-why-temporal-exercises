@@ -13,27 +13,15 @@ uv sync            # install dependencies
 make test          # run the test suite (no Docker needed)
 ```
 
-To run the demo, in separate terminals:
+To run the demo, two commands in separate terminals:
 
 ```sh
-make temporal      # the Temporal dev server (Web UI at http://localhost:8233)
-make payment       # the payment service stub
-make worker        # the Worker, polling the "delivery" queue
-make run           # place an order and watch it charge
+make temporal        # the Temporal dev server (Web UI at http://localhost:8233)
+make control-plane   # the chaos panel at http://localhost:8085, and everything it manages
 ```
 
-`make run` places an order directly. The order app is the front door the panel
-will use instead, and it's the service the app-down toggle switches off:
+Then open http://localhost:8085 and place an order.
 
-```sh
-make order-app     # the front door at http://localhost:8084
-curl -X POST http://localhost:8084/orders
-```
-
-The chaos panel UI serves separately (currently a standalone mock, every interaction faked in the browser):
-
-```sh
-make panel         # the chaos panel at http://localhost:8080
-```
+The control plane launches the three service stubs, the order app, and the Worker, and stops them when it shuts down. It has to be the thing that starts them, because it can only stop what it started, and that is what makes the panel's toggles real rather than cosmetic. Temporal itself stays in Docker, since the demo never switches it off.
 
 `make help` lists the available commands. The layout: the app lives in `src/delivery/` (`workflows.py`, `activities.py`, `worker.py`, `order_app.py`, and the service stubs under `stubs/`), the panel in `frontend/`, tests in `tests/`, and the Temporal dev server in `docker-compose.yml`.

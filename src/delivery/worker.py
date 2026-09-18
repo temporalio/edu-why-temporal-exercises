@@ -1,8 +1,8 @@
 """The Worker: connects to Temporal, registers the Workflow and Activities,
 and polls the Task Queue for work.
 
-This is the process the demo crashes and restarts. Run it with the dev server
-up: `make worker` (or `uv run python -m delivery.worker`).
+This is the process the demo crashes and restarts. The control plane launches
+it, alongside the service stubs and the order app.
 """
 
 import asyncio
