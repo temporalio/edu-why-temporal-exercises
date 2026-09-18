@@ -10,11 +10,9 @@ Translating progress is its own job, and not a trivial one. The Workflow answers
 with one of six keys naming where the order has got to; the panel draws five
 steps, each needing a status. Two of those statuses aren't in the Workflow's
 vocabulary: `waiting` separates the steps that park on a signal from the ones
-that call a service, and `retrying` will have to be inferred from a stopped
-service, because the Workflow knows only that it is awaiting an Activity, not
-that the Activity keeps failing. `retrying` is not drawn yet. The supervisor
-reports which services are up, so the information needed to infer it is here;
-using it is its own step.
+that call a service, and `retrying` is inferred from a stopped service, because
+the Workflow knows only that it is awaiting an Activity, not that the Activity
+keeps failing.
 """
 
 import asyncio
@@ -74,12 +72,19 @@ STEPS = [
 ]
 
 
-def panel_steps(current_step: str) -> list[dict]:
+# The three steps that call out to a service, which are the only ones that can
+# be retrying.
+SERVICES = tuple(step.service for step in STEPS if step.service)
+
+
+def panel_steps(current_step: str, services_down: set) -> list[dict]:
     """Every panel step with the status to draw it in, given where the order is.
 
     One reported step fixes all five: what the order has passed is done, what
     lies ahead is upcoming, and the step it sits on takes the status matching
-    what that step actually does.
+    what that step is doing. For the step it sits on, that depends on whether
+    the service it calls is running, since a call to a service that isn't there
+    keeps failing rather than progressing.
     """
     if current_step == COMPLETE:
         reached = len(STEPS)  # past every step, so all five read as done
@@ -95,6 +100,8 @@ def panel_steps(current_step: str) -> list[dict]:
             status = "upcoming"
         elif step.service is None:
             status = "waiting"  # parks on a signal rather than calling out
+        elif step.service in services_down:
+            status = "retrying"  # the service isn't there, so the call keeps failing
         else:
             status = "in-progress"
 
@@ -297,6 +304,13 @@ def create_app(
         """
         nonlocal last_known_steps
 
+        # Read from the supervisor rather than guessed. It is the only thing
+        # that knows, and the step translation below needs it too: a stopped
+        # service is what separates a step that is working from one that is
+        # stuck retrying.
+        components = {name: supervisor.is_running(name) for name in COMPONENTS}
+        services_down = {name for name in SERVICES if not components[name]}
+
         order = None
 
         if current_order_id is not None:
@@ -327,18 +341,12 @@ def create_app(
                     "progress_confirmed": False,
                 }
             else:
-                last_known_steps = panel_steps(current_step)
+                last_known_steps = panel_steps(current_step, services_down)
                 order = {
                     "id": current_order_id,
                     "steps": last_known_steps,
                     "progress_confirmed": True,
                 }
-
-        # Read from the supervisor rather than guessed. It is the only thing
-        # that knows: the panel used to track its own switches in the browser,
-        # so a process that died on its own still read as up, and a reload
-        # forgot everything.
-        components = {name: supervisor.is_running(name) for name in COMPONENTS}
 
         return {"order": order, "components": components}
 

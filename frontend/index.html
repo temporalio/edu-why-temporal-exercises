@@ -381,7 +381,7 @@
       return { tone: "down", text: "The worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the worker resumes it right where it left off." };
     const step = o.steps[o.cursor];
     if (step.type === "call") {
-      if (!state.services[step.svc])
+      if (step.status === "retrying")
         return { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and it carries on the moment ${step.svc} is back.` };
       const doing = { charge: "Charging the customer's card.", restaurant: "Sending the order to the restaurant.", dispatch: "Dispatching a driver." };
       return { tone: "info", text: doing[step.key] };

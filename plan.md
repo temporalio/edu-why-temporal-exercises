@@ -67,9 +67,9 @@ Ships as a sequence of small, independently reviewable PRs. Small, self-containe
 8. **Order app** — the front-door service that accepts a place-order request and starts the Workflow. Killing it stops new orders while in-flight ones keep running.
 9. **Control plane** — the panel-facing backend, wired one control at a time rather than all at once, so each PR leaves something visibly working:
    1. *Place, watch, and release.* Proxy `POST /orders`, serve the panel, answer `GET /state` with the order's five step statuses, and signal the two waits. The panel stops being a mock: click the button, the bar walks all five steps, and the Finish buttons release the kitchen and delivery waits.
-   2. *The toggles.* Drive the supervisor from the panel, and report each component's state from it. This step requires the control plane to **launch** every service, since the supervisor can only stop what it started, which also delivers the one-command run early. It has to check the Worker before querying progress, because with the Worker down the query hangs for its full timeout rather than failing fast.
+   2. *The toggles.* Drive the supervisor from the panel, and report each component's state from it. This step requires the control plane to **launch** every service, since the supervisor can only stop what it started, which also delivers the one-command run. It has to check the Worker before querying progress, because with the Worker down the query hangs for its full timeout rather than failing fast.
 10. **Wire the panel** — folded into step 9, one capability at a time as its endpoint lands, rather than a separate pass at the end.
-11. **Finish** — Insight (link the real Web UI), `retrying` inferred from a stopped service, and polish. The one-command run arrived with step 9.2.
+11. **Finish** — Insight, and polish.
 12. **Instruqt adaptation** — package the working standalone demo to run in an Instruqt lab: provisioning the environment and exposing the chaos panel and Temporal Web UI as browser tabs. The process-and-signal kills should carry over cleanly, so this is mostly packaging, not a rebuild. A distinct phase, taken on only once the standalone demo is solid.
 
 ## Testing
