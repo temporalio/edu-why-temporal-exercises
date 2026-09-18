@@ -163,7 +163,7 @@ def test_state_reports_the_progress_of_the_order_that_was_placed():
     ]
 
 
-async def test_state_answers_promptly_when_the_progress_query_cannot_be_answered():
+def test_state_answers_promptly_when_the_progress_query_cannot_be_answered():
     """A dead Worker must not hold the panel hostage.
 
     Only a Worker can answer a query, so with none running the call waits
@@ -207,7 +207,7 @@ async def test_state_answers_promptly_when_the_progress_query_cannot_be_answered
     assert stale["order"]["steps"] == good["order"]["steps"]  # the last it knew
 
 
-async def test_state_does_not_ask_at_all_when_the_worker_is_known_to_be_down():
+def test_state_does_not_ask_at_all_when_the_worker_is_known_to_be_down():
     """With no Worker there is nobody to answer, so don't ask.
 
     Only a Worker executes a query, so with none running the call cannot
