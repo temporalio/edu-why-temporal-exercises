@@ -22,13 +22,14 @@ from delivery.workflows import OrderWorkflow
 class FakeOrderApp:
     """Stands in for the order app, recording what the control plane asked it."""
 
-    def __init__(self, order_id: str = "order-abc123") -> None:
+    def __init__(self, order_id: str = "order-abc123", next_order_id: str = "") -> None:
         self.order_id = order_id
+        self.next_order_id = next_order_id or order_id
         self.calls = 0
 
     async def place_order(self) -> str:
         self.calls += 1
-        return self.order_id
+        return self.order_id if self.calls == 1 else self.next_order_id
 
 
 class FakeWorkflowHandle:
@@ -321,6 +322,46 @@ def test_state_reports_the_current_step_as_retrying_when_its_service_is_down():
     assert state["order"]["steps"][0] == {"key": "charge", "status": "retrying"}
 
 
+def test_a_new_order_inherits_nothing_from_the_last_one():
+    """A new order starts from nothing, whatever the last one got up to.
+
+    Two pieces of state belong to whichever order is current: the last steps
+    the query confirmed, and the signals that have been sent. Both are served
+    when the Workflow can't be asked, so both have to be cleared when a new
+    order is placed. Otherwise a stopped Worker turns a fresh order into a
+    delivered one whose waits have already been released.
+    """
+    order_app = FakeOrderApp(order_id="order-first", next_order_id="order-second")
+    temporal = FakeTemporal(current_step="complete")
+    supervisor = FakeSupervisor()
+
+    async def connect() -> FakeTemporal:
+        return temporal
+
+    panel = TestClient(
+        create_app(
+            place_order=order_app.place_order,
+            connect=connect,
+            supervisor=lambda: supervisor,
+        )
+    )
+
+    panel.post("/orders")
+    panel.post("/signals/order_prepared")
+    finished = panel.get("/state").json()
+    assert [step["status"] for step in finished["order"]["steps"]] == ["done"] * 5
+    assert finished["signals_sent"] == ["order_prepared"]
+
+    # With the Worker gone the query can't run, so the fallback is all there is.
+    panel.put("/components/worker", json={"up": False})
+    panel.post("/orders")
+    fresh = panel.get("/state").json()
+
+    assert fresh["order"]["id"] == "order-second"
+    assert fresh["order"]["steps"] == []
+    assert fresh["signals_sent"] == []
+
+
 def test_switching_a_component_off_really_stops_its_process():
     """The toggle has to stop a process, not just redraw the switch.
 
@@ -447,10 +488,6 @@ def test_releasing_a_wait_signals_the_current_order():
     for the driver; the Workflow only needs the signal to name whoever
     delivered it.
 
-    The endpoints are `order_prepared` and `order_delivered` while the Workflow
-    signals they send are still `kitchen_ready` and `delivered`. Deliberate, and
-    temporary: the kitchen isn't what's ready, the order is, and renaming the
-    signals themselves is a separate change.
     """
     order_app = FakeOrderApp(order_id="order-abc123")
     temporal = FakeTemporal(current_step="waiting_for_kitchen")
@@ -469,12 +506,43 @@ def test_releasing_a_wait_signals_the_current_order():
 
     sent = temporal.handle.signalled
     assert [signal for signal, _ in sent] == [
-        OrderWorkflow.kitchen_ready,
-        OrderWorkflow.delivered,
+        OrderWorkflow.order_prepared,
+        OrderWorkflow.order_delivered,
     ]
 
     (driver_id,) = sent[1][1]
     assert driver_id  # the delivered signal has to name a driver
+
+
+def test_state_reports_which_signals_have_been_sent():
+    """Whether a signal has been sent is the control plane's to remember.
+
+    The Workflow holds the flags, but reading them takes a query and a query
+    takes a Worker, so with the Worker stopped the Workflow cannot be asked.
+    The control plane sent the signal, so it knows either way.
+    """
+    order_app = FakeOrderApp(order_id="order-abc123")
+    temporal = FakeTemporal(current_step="waiting_for_kitchen")
+
+    async def connect() -> FakeTemporal:
+        return temporal
+
+    panel = TestClient(
+        create_app(
+            place_order=order_app.place_order,
+            connect=connect,
+            supervisor=lambda: FakeSupervisor(),
+        )
+    )
+
+    panel.post("/orders")
+    assert panel.get("/state").json()["signals_sent"] == []
+
+    panel.post("/signals/order_prepared")
+    assert panel.get("/state").json()["signals_sent"] == ["order_prepared"]
+
+    panel.post("/signals/order_delivered")
+    assert panel.get("/state").json()["signals_sent"] == ["order_prepared", "order_delivered"]
 
 
 def test_the_panel_is_served_by_the_control_plane():

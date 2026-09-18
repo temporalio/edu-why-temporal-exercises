@@ -187,6 +187,11 @@ COMPONENTS = tuple(MANAGED_PROCESSES)
 # The one component the progress query depends on.
 WORKER = "worker"
 
+# The signals the panel can send, in the order their waits occur. Reporting
+# them in this order rather than the order they were sent keeps the response
+# stable.
+SIGNALS = ("order_prepared", "order_delivered")
+
 
 def build_supervisor() -> Supervisor:
     return Supervisor(MANAGED_PROCESSES, log_dir=LOG_DIRECTORY)
@@ -227,9 +232,17 @@ def create_app(
     # else then has to be told which order is the current one.
     current_order_id: Optional[str] = None
 
-    # The last progress we could confirm. Served when the query can't answer,
-    # so the panel keeps showing where the order got to rather than going blank.
+    # The last progress we could confirm, for the order above. Served when the
+    # query can't answer, so the panel keeps showing where that order got to
+    # rather than going blank. It belongs to that order and nothing else, which
+    # is why placing a new one clears it.
     last_known_steps: Optional[list] = None
+
+    # Which signals have been sent for the order above. The Workflow holds the
+    # real flags, but reading them takes a query and a query takes a Worker, so
+    # with the Worker stopped it cannot be asked. The control plane sent them,
+    # so it knows either way.
+    signals_sent: set = set()
 
     async def temporal() -> Client:
         nonlocal client
@@ -240,8 +253,11 @@ def create_app(
 
     @app.post("/orders", response_model=PlacedOrder)
     async def post_order() -> PlacedOrder:
-        nonlocal current_order_id
+        nonlocal current_order_id, last_known_steps
         current_order_id = await place_order()
+        # Neither the old order's progress nor its signals belong to this one.
+        last_known_steps = None
+        signals_sent.clear()
 
         return PlacedOrder(order_id=current_order_id)
 
@@ -253,20 +269,21 @@ def create_app(
     # driver, which in the real world report back on their own; nothing else
     # sends these signals to an order placed from the panel.
     #
-    # Named `order_prepared` and `order_delivered` even though the Workflow's
-    # signals are still `kitchen_ready` and `delivered`. The kitchen isn't what
-    # is ready, the order is, and renaming the signals is a separate change.
+    # Each records itself only once the signal is away, so a send that fails
+    # is not remembered as having happened.
 
     @app.post("/signals/order_prepared")
     async def post_order_prepared() -> dict:
-        await (await current_order()).signal(OrderWorkflow.kitchen_ready)
+        await (await current_order()).signal(OrderWorkflow.order_prepared)
+        signals_sent.add("order_prepared")
 
         return {}
 
     @app.post("/signals/order_delivered")
     async def post_order_delivered() -> dict:
         driver_id = f"drv-{uuid.uuid4().hex[:8]}"
-        await (await current_order()).signal(OrderWorkflow.delivered, driver_id)
+        await (await current_order()).signal(OrderWorkflow.order_delivered, driver_id)
+        signals_sent.add("order_delivered")
 
         return {}
 
@@ -348,7 +365,11 @@ def create_app(
                     "progress_confirmed": True,
                 }
 
-        return {"order": order, "components": components}
+        return {
+            "order": order,
+            "components": components,
+            "signals_sent": [signal for signal in SIGNALS if signal in signals_sent],
+        }
 
     # Mounted last, so the routes above still match first. `html=True` serves
     # index.html at the root, which is the whole panel.

@@ -40,8 +40,8 @@ async def run_order(client: Client, order: Order, activities: list) -> OrderResu
             id=order.order_id,
             task_queue=TASK_QUEUE,
         )
-        await handle.signal("kitchen_ready")
-        await handle.signal("delivered", f"drv-{order.order_id}")
+        await handle.signal("order_prepared")
+        await handle.signal("order_delivered", f"drv-{order.order_id}")
         return await handle.result()
 
 
@@ -131,7 +131,7 @@ async def test_dispatch_is_retried_then_completes():
 
 
 async def test_order_waits_for_the_kitchen_signal():
-    """The order parks at the kitchen until the kitchen_ready signal arrives: the
+    """The order parks at the kitchen until the order_prepared signal arrives: the
     passage of time alone does not advance it, only the signal does. (A sleep longer
     than the jump below would slip past this check; we're guarding against the order
     moving on its own with time, not against that narrower case.)"""
@@ -159,8 +159,8 @@ async def test_order_waits_for_the_kitchen_signal():
             assert (await handle.describe()).status == WorkflowExecutionStatus.RUNNING
 
             # Release the kitchen wait, then report delivery so the order can finish.
-            await handle.signal("kitchen_ready")
-            await handle.signal("delivered", f"drv-{order.order_id}")
+            await handle.signal("order_prepared")
+            await handle.signal("order_delivered", f"drv-{order.order_id}")
             result = await handle.result()
 
     assert result.order_id == order.order_id
@@ -189,14 +189,14 @@ async def test_order_waits_for_the_delivered_signal():
             )
 
             # Clear the kitchen wait so the order advances to the delivery wait.
-            await handle.signal("kitchen_ready")
+            await handle.signal("order_prepared")
             await env.sleep(timedelta(minutes=5))
 
             # Parked at delivery: time and a completed dispatch did not finish it.
             assert (await handle.describe()).status == WorkflowExecutionStatus.RUNNING
 
             # The delivered signal releases it and names the driver.
-            await handle.signal("delivered", "drv-42")
+            await handle.signal("order_delivered", "drv-42")
             result = await handle.result()
 
     assert result.driver_id == "drv-42"
@@ -278,12 +278,12 @@ async def test_the_progress_query_names_every_state_in_turn():
             release_restaurant.set()
             assert await wait_for_step(handle, "waiting_for_kitchen") == "waiting_for_kitchen"
 
-            await handle.signal("kitchen_ready")
+            await handle.signal("order_prepared")
             assert await wait_for_step(handle, "dispatching_driver") == "dispatching_driver"
 
             release_dispatch.set()
             assert await wait_for_step(handle, "waiting_for_delivery") == "waiting_for_delivery"
 
-            await handle.signal("delivered", f"drv-{order.order_id}")
+            await handle.signal("order_delivered", f"drv-{order.order_id}")
             await handle.result()
             assert await handle.query(OrderWorkflow.current_step) == "complete"

@@ -74,7 +74,6 @@
   /* -------------------------------------------------------------- pipeline */
   .pipe-scroll { overflow-x: auto; margin: 10px -2px 2px; padding: 2px; }
   .pipeline { display: flex; align-items: stretch; min-width: 0; margin: 0; padding: 10px 0 0; list-style: none; }
-  .pipeline.paused { opacity: .5; filter: saturate(.6); }
   .step { flex: 1 1 0; display: flex; flex-direction: column; }
 
   .node { position: relative; margin: 0 2px; padding: 9px; border-radius: 9px; flex: 1;
@@ -90,6 +89,8 @@
     background: var(--amber); color: var(--knob-ink); font-size: 10px; font-weight: 700; cursor: pointer;
     animation: nudge 1.4s ease-in-out infinite; }
   .node .node-btn:hover { filter: brightness(1.05); }
+  .node .node-btn:disabled { background: transparent; color: var(--muted); border-color: var(--hairline);
+    cursor: default; animation: none; filter: none; }
   .state-tag { display: inline-flex; align-items: center; gap: 5px; align-self: center; margin-top: auto; max-width: 100%;
     padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 650; }
   .state-tag .led { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
@@ -223,7 +224,12 @@
   // look identical in `order: null` and mean opposite things: the first should
   // enable the Place order button, the second must not, or a refresh while an
   // order is running offers a button that would start a second one.
-  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null, loaded: false };
+  // `sent` holds the signals that have already gone, and comes from the
+  // control plane so that it survives a reload. The Finish buttons are drawn
+  // from a polled snapshot, so without it a button stays live until the panel
+  // next sees the step move on, which is long enough to send the same signal
+  // several times.
+  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null, loaded: false, sent: new Set() };
 
   // The server says only which step each one is on. The panel keeps the labels
   // and the shapes, so the two are merged by key.
@@ -297,6 +303,7 @@
       const payload = await response.json();
       state.order = orderFromServer(payload);
       componentsFromServer(payload.components);
+      state.sent = new Set(payload.signals_sent);
       state.loaded = true;
     } catch (err) {
       // The control plane is the one thing the demo cannot switch off, so a
@@ -323,7 +330,6 @@
     nb.querySelector(".ntext").textContent = nar.text;
 
     const pipe = document.getElementById("pipeline");
-    pipe.className = "pipeline" + (o && !state.worker && o.status === "running" ? " paused" : "");
     pipe.innerHTML = "";
     (o ? o.steps : STEPS.map(s => ({ ...s, status: "upcoming" }))).forEach((step, i) => {
       const li = document.createElement("li");
@@ -331,7 +337,9 @@
       const topCtrl = step.svc
         ? `<input type="checkbox" class="switch node-sw" data-svc="${step.svc}" ${state.services[step.svc] ? "checked" : ""} aria-label="${step.svc} service up">`
         : (o && step.type === "wait" && step.status === "waiting"
-            ? `<button class="node-btn" data-signal="${step.key}">Finish</button>`
+            ? (state.sent.has(WAIT_SIGNAL[step.key])
+                ? `<button class="node-btn" disabled>Sent</button>`
+                : `<button class="node-btn" data-signal="${step.key}">Finish</button>`)
             : "");
       li.innerHTML = `
         <div class="node" data-s="${step.status}">
@@ -375,20 +383,35 @@
     if (!o) return state.app
       ? { tone: "idle", text: "No order yet. Place one to watch it move through the steps." }
       : { tone: "down", text: "The order app is down, so no new orders can be placed. Bring it back up to start one." };
-    if (o.status === "complete")
-      return { tone: "done", text: "Delivered. Every step ran exactly once, so the customer was charged a single time no matter how many retries it took." };
-    if (!state.worker)
-      return { tone: "down", text: "The worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the worker resumes it right where it left off." };
-    const step = o.steps[o.cursor];
-    if (step.type === "call") {
-      if (step.status === "retrying")
-        return { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and it carries on the moment ${step.svc} is back.` };
-      const doing = { charge: "Charging the customer's card.", restaurant: "Sending the order to the restaurant.", dispatch: "Dispatching a driver." };
-      return { tone: "info", text: doing[step.key] };
+    let message;
+    if (o.status === "complete") {
+      message = { tone: "done", text: "Delivered. Every step ran exactly once, so the customer was charged a single time no matter how many retries it took." };
+    } else if (!state.worker) {
+      message = { tone: "down", text: "The worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the worker resumes it right where it left off." };
+    } else {
+      const step = o.steps[o.cursor];
+      if (step.type === "call") {
+        const doing = { charge: "Charging the customer's card.", restaurant: "Sending the order to the restaurant.", dispatch: "Dispatching a driver." };
+        message = step.status === "retrying"
+          ? { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and it carries on the moment ${step.svc} is back.` }
+          : { tone: "info", text: doing[step.key] };
+      } else {
+        message = step.key === "kitchen"
+          ? { tone: "warn", text: "Parked at the kitchen. The order waits for the kitchen to signal the food is ready." }
+          : { tone: "warn", text: "Out for delivery. The order waits for the driver to report it delivered before it completes." };
+      }
     }
-    return step.key === "kitchen"
-      ? { tone: "warn", text: "Parked at the kitchen. The order waits for the kitchen to signal the food is ready." }
-      : { tone: "warn", text: "Out for delivery. The order waits for the driver to report it delivered before it completes." };
+
+    // Added to whatever the order is doing rather than replacing it, because a
+    // running order is untouched by the app being down. Amber rather than red,
+    // since red is what a stopped Worker reads as and the difference between
+    // the two is the point. A stopped Worker keeps its red.
+    if (!state.app) {
+      message.text += " The app is down. No new orders can be placed.";
+      if (message.tone !== "down") message.tone = "warn";
+    }
+
+    return message;
   }
 
   function renderControls() {
@@ -417,23 +440,39 @@
   // The two Finish buttons stand in for the kitchen and the driver, who in the
   // real world report back on their own. The driver's id is generated by the
   // control plane, not here.
+  // Marked sent and redrawn before the request goes, so the button settles the
+  // moment it is clicked rather than waiting for a poll to notice. The signal
+  // is recorded by the Temporal server whether or not a Worker is running, so
+  // with the Worker down this is the honest state: sent, and waiting to be
+  // picked up.
   async function reportOrderPrepared() {
+    state.sent.add("order_prepared");
+    render();
+
     await fetch("/signals/order_prepared", { method: "POST" });
 
     poll();
   }
 
   async function reportOrderDelivered() {
+    state.sent.add("order_delivered");
+    render();
+
     await fetch("/signals/order_delivered", { method: "POST" });
 
     poll();
   }
 
-  // Which Finish button releases which wait.
+  // Which Finish button releases which wait, and which signal that sends. The
+  // control plane names its signals for the event; the panel draws them on the
+  // step that is waiting.
   const RELEASE_WAIT = { kitchen: reportOrderPrepared, delivery: reportOrderDelivered };
+  const WAIT_SIGNAL = { kitchen: "order_prepared", delivery: "order_delivered" };
 
   document.getElementById("place-btn").onclick = async () => {
     if (!state.app || (state.order && state.order.status === "running")) return;
+
+    state.sent.clear();  // a new order's waits have not been released
 
     await fetch("/orders", { method: "POST" });
 
