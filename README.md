@@ -22,6 +22,6 @@ make control-plane   # the chaos panel at http://localhost:8085, and everything 
 
 Then open http://localhost:8085 and place an order.
 
-The control plane launches the three service stubs, the order app, and the Worker, and stops them on its way out. It has to be the thing that starts them, because it can only stop what it started, and that is what makes the panel's toggles real rather than cosmetic. Temporal itself stays in Docker, since the demo never switches it off.
+The control plane launches the three service stubs, the order app, and the Worker, and stops them when it shuts down. It has to be the thing that starts them, because it can only stop what it started, and that is what makes the panel's toggles real rather than cosmetic. Temporal itself stays in Docker, since the demo never switches it off.
 
 `make help` lists the available commands. The layout: the app lives in `src/delivery/` (`workflows.py`, `activities.py`, `worker.py`, `order_app.py`, and the service stubs under `stubs/`), the panel in `frontend/`, tests in `tests/`, and the Temporal dev server in `docker-compose.yml`.
