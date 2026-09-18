@@ -27,22 +27,22 @@ _RETRY = RetryPolicy(maximum_interval=timedelta(seconds=10))
 @workflow.defn
 class OrderWorkflow:
     def __init__(self) -> None:
-        self._kitchen_ready = False
-        self._delivered = False
+        self._order_prepared = False
+        self._order_delivered = False
         self._driver_id = ""
         self._current_step = ""  # run() names each step as the order reaches it
 
     @workflow.signal
-    def kitchen_ready(self) -> None:
+    def order_prepared(self) -> None:
         """The kitchen reports the food is ready. Sent by the simulated kitchen."""
-        self._kitchen_ready = True
+        self._order_prepared = True
 
     @workflow.signal
-    def delivered(self, driver_id: str) -> None:
+    def order_delivered(self, driver_id: str) -> None:
         """The driver reports the order delivered, naming themselves. Sent by the
         (simulated) driver; the id is who delivered this order."""
         self._driver_id = driver_id
-        self._delivered = True
+        self._order_delivered = True
 
     @workflow.query
     def current_step(self) -> str:
@@ -83,7 +83,7 @@ class OrderWorkflow:
         # also the calm place to kill the Worker and watch the order resume.
         self._current_step = "waiting_for_kitchen"
         workflow.logger.info(f"[order]      {order.order_id}: waiting on the kitchen")
-        await workflow.wait_condition(lambda: self._kitchen_ready)
+        await workflow.wait_condition(lambda: self._order_prepared)
         workflow.logger.info(f"[order]      {order.order_id}: kitchen ready")
 
         self._current_step = "dispatching_driver"
@@ -101,7 +101,7 @@ class OrderWorkflow:
         # kill the Worker and watch the order resume.
         self._current_step = "waiting_for_delivery"
         workflow.logger.info(f"[order]      {order.order_id}: waiting on delivery")
-        await workflow.wait_condition(lambda: self._delivered)
+        await workflow.wait_condition(lambda: self._order_delivered)
         workflow.logger.info(f"[order]      {order.order_id}: delivered by {self._driver_id}")
 
         self._current_step = "complete"
