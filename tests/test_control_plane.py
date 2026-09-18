@@ -8,9 +8,6 @@ Workflow's vocabulary at all. `waiting` distinguishes the two steps that park on
 a signal from the three that call a service, and `retrying` is inferred from a
 stopped service, since the Workflow only knows it is awaiting an Activity, not
 that the Activity keeps failing.
-
-`retrying` doesn't appear yet. The supervisor reports which services are up, so
-the information needed to infer it is here; using it is its own step.
 """
 
 import asyncio
@@ -297,6 +294,33 @@ def test_state_reports_which_components_are_running():
     }
 
 
+def test_state_reports_the_current_step_as_retrying_when_its_service_is_down():
+    """The endpoint joins two things only it holds together.
+
+    The supervisor knows the payment process is gone. The Workflow knows the
+    order sits on the charge step. Neither alone says the step is retrying.
+    """
+    order_app = FakeOrderApp(order_id="order-abc123")
+    temporal = FakeTemporal(current_step="charging_payment")
+    supervisor = FakeSupervisor(down=("payment",))
+
+    async def connect() -> FakeTemporal:
+        return temporal
+
+    panel = TestClient(
+        create_app(
+            place_order=order_app.place_order,
+            connect=connect,
+            supervisor=lambda: supervisor,
+        )
+    )
+
+    panel.post("/orders")
+    state = panel.get("/state").json()
+
+    assert state["order"]["steps"][0] == {"key": "charge", "status": "retrying"}
+
+
 def test_switching_a_component_off_really_stops_its_process():
     """The toggle has to stop a process, not just redraw the switch.
 
@@ -476,7 +500,7 @@ def test_the_order_walks_from_done_through_the_current_step_to_upcoming():
     upcoming, and the step it sits on gets the status matching what it is
     doing. The kitchen parks on a signal, so it waits.
     """
-    steps = panel_steps("waiting_for_kitchen")
+    steps = panel_steps("waiting_for_kitchen", services_down=set())
 
     assert steps == [
         {"key": "charge", "status": "done"},
@@ -494,9 +518,25 @@ def test_a_step_that_calls_a_service_is_in_progress_rather_than_waiting():
     panel draws them differently, and `in-progress` is the word its own markup
     and stylesheet use, so that is the word the control plane has to send.
     """
-    steps = panel_steps("charging_payment")
+    steps = panel_steps("charging_payment", services_down=set())
 
     assert steps[0] == {"key": "charge", "status": "in-progress"}
+
+
+def test_the_step_calling_a_stopped_service_is_retrying_rather_than_in_progress():
+    """`in-progress` and `retrying` teach opposite things.
+
+    One says the system is working. The other says it is surviving a failure,
+    and surviving the failure is the entire lesson, so drawing a stuck step as
+    though it were healthy tells the learner the wrong story.
+
+    The Workflow cannot supply this. It knows it is awaiting an Activity, not
+    that the Activity keeps failing, so the only source is the supervisor: the
+    order is on this step, the step calls a service, and that service is down.
+    """
+    steps = panel_steps("charging_payment", services_down={"payment"})
+
+    assert steps[0] == {"key": "charge", "status": "retrying"}
 
 
 def test_a_complete_order_shows_every_step_done():
@@ -506,6 +546,6 @@ def test_a_complete_order_shows_every_step_done():
     Without this the query's own vocabulary would crash the translation at the
     exact moment an order finishes.
     """
-    steps = panel_steps("complete")
+    steps = panel_steps("complete", services_down=set())
 
     assert [step["status"] for step in steps] == ["done"] * 5
