@@ -11,8 +11,8 @@ from fastapi.testclient import TestClient
 from delivery.stubs.restaurant import create_app
 
 
-def test_send_records_one_ticket():
-    client = TestClient(create_app(delay_seconds=0))
+def test_send_records_one_ticket(tmp_path):
+    client = TestClient(create_app(ledger_path=tmp_path / "restaurant-ledger.json", delay_seconds=0))
 
     response = client.post("/tickets", json={"order_id": "order-1", "description": "Pad Thai"})
 
@@ -23,8 +23,8 @@ def test_send_records_one_ticket():
     assert client.get("/tickets").json() == [ticket]
 
 
-def test_send_is_idempotent_on_order_id():
-    client = TestClient(create_app(delay_seconds=0))
+def test_send_is_idempotent_on_order_id(tmp_path):
+    client = TestClient(create_app(ledger_path=tmp_path / "restaurant-ledger.json", delay_seconds=0))
     body = {"order_id": "order-1", "description": "Pad Thai"}
 
     first = client.post("/tickets", json=body).json()
@@ -32,3 +32,17 @@ def test_send_is_idempotent_on_order_id():
 
     assert first == second  # the same ticket comes back
     assert len(client.get("/tickets").json()) == 1  # one ticket, never a duplicate
+
+
+def test_a_restarted_stub_still_sends_an_order_only_once(tmp_path):
+    ledger_path = tmp_path / "restaurant-ledger.json"
+    body = {"order_id": "order-1", "description": "Pad Thai"}
+
+    before_restart = TestClient(create_app(delay_seconds=0, ledger_path=ledger_path))
+    original = before_restart.post("/tickets", json=body).json()
+
+    after_restart = TestClient(create_app(delay_seconds=0, ledger_path=ledger_path))
+    retried = after_restart.post("/tickets", json=body).json()
+
+    assert retried == original  # the retry gets the original ticket back
+    assert after_restart.get("/tickets").json() == [original]  # still one ticket

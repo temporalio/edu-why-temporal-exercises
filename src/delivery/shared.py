@@ -1,5 +1,12 @@
 """Constants shared by the Worker, the Workflow, and the tests."""
 
+from pathlib import Path
+
+# Where the demo writes what it keeps between runs: each managed process's log
+# and each stub's ledger. It sits beside the source rather than inside the
+# package, because the demo runs from the repo.
+LOG_DIRECTORY = Path(__file__).resolve().parents[2] / "logs"
+
 # The Task Queue the Worker polls and clients target.
 TASK_QUEUE = "delivery"
 

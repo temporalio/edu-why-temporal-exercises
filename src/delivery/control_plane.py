@@ -28,7 +28,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from temporalio.client import Client
 
-from delivery.shared import ORDER_APP_URL, TEMPORAL_TARGET
+from delivery.shared import (
+    DISPATCH_URL,
+    LOG_DIRECTORY,
+    ORDER_APP_URL,
+    PAYMENT_URL,
+    RESTAURANT_URL,
+    TEMPORAL_TARGET,
+)
 from delivery.supervisor import ProcessDefinition, Supervisor
 from delivery.workflows import OrderWorkflow
 
@@ -59,6 +66,16 @@ COMPLETE = "complete"
 # requests stack up behind each other. Generous next to a healthy query, which
 # answers in milliseconds.
 PROGRESS_TIMEOUT_SECONDS = 2.0
+
+# Where each service lists its records, and how long to wait for one to answer.
+# The stubs run on localhost and answer in milliseconds, so a short bound keeps
+# a hung stub from holding up the 700ms poll.
+LEDGER_ENDPOINTS = {
+    "payment": f"{PAYMENT_URL}/ledger",
+    "restaurant": f"{RESTAURANT_URL}/tickets",
+    "dispatch": f"{DISPATCH_URL}/dispatches",
+}
+LEDGER_TIMEOUT_SECONDS = 0.5
 
 # The panel's five steps in order. `key` is the panel's name for the step and
 # `workflow_step` is what the progress query calls it, so this table is the only
@@ -134,6 +151,29 @@ async def place_order() -> str:
         return response.json()["order_id"]
 
 
+def ledger_reader(
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> Callable[[str, str], Awaitable[Optional[int]]]:
+    """A reader that asks a service how many records it holds for an order.
+
+    `transport` is the seam for tests, which pass one that routes to a stub app
+    in memory. The demo uses the default, the network.
+    """
+
+    async def count_records(service: str, order_id: str) -> Optional[int]:
+        """How many records the service holds for this order, or None if it can't say."""
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=LEDGER_TIMEOUT_SECONDS) as http:
+                response = await http.get(LEDGER_ENDPOINTS[service])
+                response.raise_for_status()
+        except httpx.HTTPError:
+            return None
+
+        return sum(1 for entry in response.json() if entry["order_id"] == order_id)
+
+    return count_records
+
+
 # The panel's files, alongside the source rather than inside the package: this
 # runs from the repo, not from an installed wheel.
 PANEL_DIRECTORY = Path(__file__).resolve().parents[2] / "frontend"
@@ -142,11 +182,6 @@ PANEL_DIRECTORY = Path(__file__).resolve().parents[2] / "frontend"
 async def connect_to_temporal() -> Client:
     return await Client.connect(TEMPORAL_TARGET)
 
-
-# Each managed process's own log file lands here, beside the source rather than
-# inside the package, for the same reason the panel does: this runs from the
-# repo.
-LOG_DIRECTORY = Path(__file__).resolve().parents[2] / "logs"
 
 # The processes the control plane owns, keyed by **the panel's** names for them.
 # `app` rather than `order-app`, because the panel froze that vocabulary when it
@@ -199,6 +234,7 @@ def build_supervisor() -> Supervisor:
 
 def create_app(
     place_order: Callable[[], Awaitable[str]] = place_order,
+    count_records: Callable[[str, str], Awaitable[Optional[int]]] = ledger_reader(),
     connect: Callable[[], Awaitable[Client]] = connect_to_temporal,
     supervisor: Callable[[], Supervisor] = build_supervisor,
 ) -> FastAPI:
@@ -311,6 +347,25 @@ def create_app(
 
         return {"name": name, "up": supervisor.is_running(name)}
 
+    async def read_ledgers(order_id: str, services_down: set) -> dict:
+        """How many records each service holds for the order, keyed by step.
+
+        Read from the services rather than inferred from the steps, so a service
+        that acted twice shows twice. A stopped service isn't asked: it hasn't
+        lost its records, it just can't answer, so its count is unknown (None).
+        """
+        call_steps = [step for step in STEPS if step.service]
+
+        async def count_for(step: PanelStep) -> Optional[int]:
+            if step.service in services_down:
+                return None
+
+            return await count_records(step.service, order_id)
+
+        counts = await asyncio.gather(*(count_for(step) for step in call_steps))
+
+        return {step.key: count for step, count in zip(call_steps, counts)}
+
     @app.get("/state")
     async def get_state() -> dict:
         """Everything the panel polls for, in one response.
@@ -331,6 +386,8 @@ def create_app(
         order = None
 
         if current_order_id is not None:
+            ledgers = await read_ledgers(current_order_id, services_down)
+
             current_step = None
 
             # Only a Worker executes a query, so with none running the call
@@ -356,6 +413,7 @@ def create_app(
                     "id": current_order_id,
                     "steps": last_known_steps or [],
                     "progress_confirmed": False,
+                    "ledgers": ledgers,
                 }
             else:
                 last_known_steps = panel_steps(current_step, services_down)
@@ -363,6 +421,7 @@ def create_app(
                     "id": current_order_id,
                     "steps": last_known_steps,
                     "progress_confirmed": True,
+                    "ledgers": ledgers,
                 }
 
         return {

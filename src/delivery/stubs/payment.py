@@ -3,7 +3,9 @@
 A stand-in for a real payment processor. It charges an order and records each
 charge in a ledger, and it's idempotent on the order id: charging the same order
 twice records one charge and returns the same result. That idempotency is what
-lets a Workflow retry a charge after a crash without ever double-charging.
+lets a Workflow retry a charge after a crash without ever double-charging. The
+ledger lives in `logs/payment-ledger.json`, so the stub remembers its charges
+when the panel restarts it.
 
 A new charge takes a couple of seconds to "process", so there's a window to kill
 the Worker or a dependency mid-order. The delay lives here because that's where
@@ -19,9 +21,13 @@ later PR; for now it always succeeds.
 import asyncio
 import os
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI
 from pydantic import BaseModel
+
+from delivery.shared import LOG_DIRECTORY
+from delivery.stubs.ledger import Ledger
 
 DEFAULT_DELAY_SECONDS = float(os.environ.get("PAYMENT_DELAY_SECONDS", "2"))
 
@@ -37,13 +43,13 @@ class Charge(BaseModel):
     amount_cents: int
 
 
-def create_app(delay_seconds: float = DEFAULT_DELAY_SECONDS) -> FastAPI:
+def create_app(ledger_path: Path, delay_seconds: float = DEFAULT_DELAY_SECONDS) -> FastAPI:
     app = FastAPI(title="Payment stub")
-    ledger: list[Charge] = []
+    ledger = Ledger(Charge, ledger_path)
 
     @app.post("/charge", response_model=Charge)
     async def charge(request: ChargeRequest) -> Charge:
-        existing = next((c for c in ledger if c.order_id == request.order_id), None)
+        existing = ledger.find(request.order_id)
         if existing is not None:
             return existing  # idempotent: an order is charged at most once
         await asyncio.sleep(delay_seconds)  # simulate the processor working
@@ -57,9 +63,9 @@ def create_app(delay_seconds: float = DEFAULT_DELAY_SECONDS) -> FastAPI:
 
     @app.get("/ledger", response_model=list[Charge])
     async def get_ledger() -> list[Charge]:
-        return list(ledger)
+        return ledger.records()
 
     return app
 
 
-app = create_app()
+app = create_app(ledger_path=LOG_DIRECTORY / "payment-ledger.json")
