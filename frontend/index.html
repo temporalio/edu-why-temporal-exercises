@@ -121,6 +121,8 @@
   .ledger.charged .name { color: var(--text); }
   .ledger .count { font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 999px; line-height: 16px; flex: none;
     font-variant-numeric: tabular-nums; color: var(--green); background: var(--green-fill); }
+  .ledger .count.unknown { color: var(--muted); background: transparent; box-shadow: inset 0 0 0 1px var(--hairline); }
+  .ledger .count.empty { color: var(--muted); background: transparent; }
 
   /* --------------------------------------------------------------- toggles */
   .toggle-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -246,10 +248,9 @@
     const complete = cursor === -1;
     if (complete) cursor = steps.length;
 
-    // A finished call step means that service acted, which is all the ledgers
-    // show. Derived here rather than reported, so the server needn't track it.
-    const ledger = { charge: null, restaurant: null, dispatch: null };
-    steps.forEach(step => { if (step.svc && step.status === "done") ledger[step.key] = 1; });
+    // How many records each service holds for this order, as the services
+    // themselves report it. null is a service that can't be asked right now.
+    const ledger = payload.order.ledgers || {};
 
     return {
       id: payload.order.id,
@@ -358,10 +359,21 @@
     const led = document.getElementById("ledgers");
     led.innerHTML = "";
     Object.entries(LEDGER_KEYS).forEach(([k, meta]) => {
-      const val = o ? o.ledger[k] : null;
+      // No order shows no badge; null shows "??", since the service can't be
+      // asked; zero shows a muted ×0; anything else shows the real count.
+      const val = o ? o.ledger[k] : undefined;
+      const counted = typeof val === "number" && val > 0;
       const div = document.createElement("div");
-      div.className = "ledger" + (val ? " charged" : "");
-      div.innerHTML = `<span class="name">${meta.name}</span>${val ? `<span class="count">×1</span>` : ""}`;
+      div.className = "ledger" + (counted ? " charged" : "");
+      let badge = "";
+      if (val === null) {
+        badge = `<span class="count unknown">??</span>`;
+      } else if (val === 0) {
+        badge = `<span class="count empty">×0</span>`;
+      } else if (counted) {
+        badge = `<span class="count">×${val}</span>`;
+      }
+      div.innerHTML = `<span class="name">${meta.name}</span>${badge}`;
       led.appendChild(div);
     });
 

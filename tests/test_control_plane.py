@@ -80,6 +80,22 @@ class FakeTemporal:
         return self.handle
 
 
+class FakeLedgers:
+    """Stands in for the stubs' ledgers, answering with set counts.
+
+    A count of None is a service that couldn't answer. Records which services
+    were asked, and for which order.
+    """
+
+    def __init__(self, counts: dict) -> None:
+        self.counts = counts
+        self.asked: list[tuple[str, str]] = []
+
+    async def count_records(self, service: str, order_id: str):
+        self.asked.append((service, order_id))
+        return self.counts.get(service)
+
+
 class FakeSupervisor:
     """Stands in for the process supervisor, recording what it was asked to do.
 
@@ -293,6 +309,77 @@ def test_state_reports_which_components_are_running():
         "worker": True,
         "app": True,
     }
+
+
+def test_state_reports_how_many_records_each_service_holds_for_the_order():
+    """The ledgers on the panel are read from the services, not inferred.
+
+    A count inferred from the steps would read 1 once a step finished, whatever
+    the service actually did, so it could never show a repeat. Asking each
+    service is the only way a duplicate becomes visible.
+    """
+    order_app = FakeOrderApp(order_id="order-abc123")
+    ledgers = FakeLedgers({"payment": 2, "restaurant": 1, "dispatch": 0})
+
+    panel = TestClient(
+        create_app(
+            place_order=order_app.place_order,
+            count_records=ledgers.count_records,
+            supervisor=lambda: FakeSupervisor(down=("worker",)),  # no query needed
+        )
+    )
+
+    panel.post("/orders")
+    state = panel.get("/state").json()
+
+    assert state["order"]["ledgers"] == {"charge": 2, "restaurant": 1, "dispatch": 0}
+    assert set(ledgers.asked) == {
+        ("payment", "order-abc123"),
+        ("restaurant", "order-abc123"),
+        ("dispatch", "order-abc123"),
+    }
+
+
+def test_a_stopped_service_is_not_asked_and_its_count_is_unknown():
+    """A stopped service hasn't lost its records; it just can't be asked.
+
+    So its count is unknown rather than zero, and the control plane doesn't
+    spend a request finding out what the supervisor already knows.
+    """
+    order_app = FakeOrderApp(order_id="order-abc123")
+    ledgers = FakeLedgers({"payment": 1, "restaurant": 1, "dispatch": 0})
+
+    panel = TestClient(
+        create_app(
+            place_order=order_app.place_order,
+            count_records=ledgers.count_records,
+            supervisor=lambda: FakeSupervisor(down=("worker", "payment")),
+        )
+    )
+
+    panel.post("/orders")
+    state = panel.get("/state").json()
+
+    assert state["order"]["ledgers"] == {"charge": None, "restaurant": 1, "dispatch": 0}
+    assert "payment" not in {service for service, _ in ledgers.asked}
+
+
+def test_a_service_that_cannot_answer_has_an_unknown_count():
+    order_app = FakeOrderApp(order_id="order-abc123")
+    ledgers = FakeLedgers({"payment": 2, "restaurant": None, "dispatch": 0})
+
+    panel = TestClient(
+        create_app(
+            place_order=order_app.place_order,
+            count_records=ledgers.count_records,
+            supervisor=lambda: FakeSupervisor(down=("worker",)),
+        )
+    )
+
+    panel.post("/orders")
+    state = panel.get("/state").json()
+
+    assert state["order"]["ledgers"] == {"charge": 2, "restaurant": None, "dispatch": 0}
 
 
 def test_state_reports_the_current_step_as_retrying_when_its_service_is_down():

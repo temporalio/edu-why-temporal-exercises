@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 from delivery.stubs.dispatch import create_app
 
 
-def test_dispatch_records_one_dispatch():
-    client = TestClient(create_app(delay_seconds=0))
+def test_dispatch_records_one_dispatch(tmp_path):
+    client = TestClient(create_app(ledger_path=tmp_path / "dispatch-ledger.json", delay_seconds=0))
 
     response = client.post("/dispatches", json={"order_id": "order-1"})
 
@@ -24,8 +24,8 @@ def test_dispatch_records_one_dispatch():
     assert client.get("/dispatches").json() == [dispatch]
 
 
-def test_dispatch_is_idempotent_on_order_id():
-    client = TestClient(create_app(delay_seconds=0))
+def test_dispatch_is_idempotent_on_order_id(tmp_path):
+    client = TestClient(create_app(ledger_path=tmp_path / "dispatch-ledger.json", delay_seconds=0))
     body = {"order_id": "order-1"}
 
     first = client.post("/dispatches", json=body).json()
@@ -33,3 +33,17 @@ def test_dispatch_is_idempotent_on_order_id():
 
     assert first == second  # the same dispatch comes back
     assert len(client.get("/dispatches").json()) == 1  # one dispatch, never a duplicate
+
+
+def test_a_restarted_stub_still_dispatches_an_order_only_once(tmp_path):
+    ledger_path = tmp_path / "dispatch-ledger.json"
+    body = {"order_id": "order-1"}
+
+    before_restart = TestClient(create_app(delay_seconds=0, ledger_path=ledger_path))
+    original = before_restart.post("/dispatches", json=body).json()
+
+    after_restart = TestClient(create_app(delay_seconds=0, ledger_path=ledger_path))
+    retried = after_restart.post("/dispatches", json=body).json()
+
+    assert retried == original  # the retry gets the original dispatch back
+    assert after_restart.get("/dispatches").json() == [original]  # still one dispatch
