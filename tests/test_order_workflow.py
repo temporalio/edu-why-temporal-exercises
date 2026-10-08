@@ -2,8 +2,7 @@
 driver, waits for delivery, and returns the results as an OrderResult.
 
 The Activities are mocked here so we test the Workflow's orchestration in
-isolation: that it runs each step and returns its result. The real HTTP path to
-the stubs is covered by the integration test in a later PR.
+isolation: that it runs each step and returns its result.
 """
 
 import asyncio

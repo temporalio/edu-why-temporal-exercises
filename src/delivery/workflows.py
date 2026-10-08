@@ -14,7 +14,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
-    from delivery.activities import charge_payment, dispatch_driver, send_to_restaurant
+    from delivery.activities import DeliveryActivities
     from delivery.models import Order, OrderResult
 
 # Each service call shares one timeout and retry policy. The backoff is capped at
@@ -62,7 +62,7 @@ class OrderWorkflow:
         self._current_step = "charging_payment"
         workflow.logger.info(f"[order]      {order.order_id}: charging payment")
         charge_id = await workflow.execute_activity(
-            charge_payment,
+            DeliveryActivities.charge_payment,
             order,
             start_to_close_timeout=_TIMEOUT,
             retry_policy=_RETRY,
@@ -71,7 +71,7 @@ class OrderWorkflow:
         self._current_step = "sending_to_restaurant"
         workflow.logger.info(f"[order]      {order.order_id}: sending to the restaurant")
         ticket_id = await workflow.execute_activity(
-            send_to_restaurant,
+            DeliveryActivities.send_to_restaurant,
             order,
             start_to_close_timeout=_TIMEOUT,
             retry_policy=_RETRY,
@@ -89,7 +89,7 @@ class OrderWorkflow:
         self._current_step = "dispatching_driver"
         workflow.logger.info(f"[order]      {order.order_id}: dispatching a driver")
         dispatch_id = await workflow.execute_activity(
-            dispatch_driver,
+            DeliveryActivities.dispatch_driver,
             order,
             start_to_close_timeout=_TIMEOUT,
             retry_policy=_RETRY,

@@ -14,15 +14,19 @@ TASK_QUEUE = "delivery"
 TEMPORAL_TARGET = "localhost:7233"
 
 # Where the payment service stub listens.
-PAYMENT_URL = "http://localhost:8081"
+PAYMENT_PORT = 8081
+PAYMENT_URL = f"http://localhost:{PAYMENT_PORT}"
 
 # Where the restaurant service stub listens.
-RESTAURANT_URL = "http://localhost:8082"
+RESTAURANT_PORT = 8082
+RESTAURANT_URL = f"http://localhost:{RESTAURANT_PORT}"
 
 # Where the dispatch service stub listens.
-DISPATCH_URL = "http://localhost:8083"
+DISPATCH_PORT = 8083
+DISPATCH_URL = f"http://localhost:{DISPATCH_PORT}"
 
 # Where the order app listens. The control plane places orders through it rather
 # than starting Workflows itself, so that killing the app really does stop new
 # orders.
-ORDER_APP_URL = "http://localhost:8084"
+ORDER_APP_PORT = 8084
+ORDER_APP_URL = f"http://localhost:{ORDER_APP_PORT}"
