@@ -12,7 +12,7 @@ from temporalio import activity, workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from delivery.activities import charge_payment, dispatch_driver, send_to_restaurant
+from delivery.activities import DeliveryActivities
 from delivery.shared import TASK_QUEUE, TEMPORAL_TARGET
 from delivery.workflows import OrderWorkflow
 
@@ -23,11 +23,12 @@ async def main() -> None:
     workflow.logger.workflow_info_on_message = False  # drop the context dict from workflow lines
     activity.logger.activity_info_on_message = False  # same, for activity lines
     client = await Client.connect(TEMPORAL_TARGET)
+    delivery = DeliveryActivities()
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
         workflows=[OrderWorkflow],
-        activities=[charge_payment, dispatch_driver, send_to_restaurant],
+        activities=[delivery.charge_payment, delivery.send_to_restaurant, delivery.dispatch_driver],
     )
     print(f"Worker polling '{TASK_QUEUE}' at {TEMPORAL_TARGET} (Ctrl-C to stop)")
     await worker.run()
