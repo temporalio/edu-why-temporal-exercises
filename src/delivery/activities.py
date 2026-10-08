@@ -3,7 +3,7 @@
 `charge_payment` charges the order, `send_to_restaurant` creates its ticket, and
 `dispatch_driver` assigns a driver. Each call is idempotent on the order id, so a
 retry after a crash never double-acts (no double charge, duplicate ticket, or
-second driver). The delivery Activity arrives with a later PR.
+second driver). Delivery isn't an Activity: the driver reports it with a Signal.
 """
 
 import httpx

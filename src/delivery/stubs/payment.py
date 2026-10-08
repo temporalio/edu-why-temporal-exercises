@@ -12,9 +12,6 @@ the Worker or a dependency mid-order. The delay lives here because that's where
 latency lives in reality. Tune it with PAYMENT_DELAY_SECONDS (or the delay_seconds
 argument); tests pass 0 so the suite stays fast.
 
-The on/off switch that makes the service fail (so a step retries) arrives in a
-later PR; for now it always succeeds.
-
     uv run python -m uvicorn delivery.stubs.payment:app --port 8081
 """
 

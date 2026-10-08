@@ -12,9 +12,6 @@ to kill the Worker or a dependency mid-order. The delay lives here because that'
 where latency lives in reality. Tune it with RESTAURANT_DELAY_SECONDS (or the
 delay_seconds argument); tests pass 0 so the suite stays fast.
 
-The on/off switch that makes the service fail (so the step retries) arrives with
-the dependency-chaos PR; for now it always succeeds.
-
     uv run python -m uvicorn delivery.stubs.restaurant:app --port 8082
 """
 
