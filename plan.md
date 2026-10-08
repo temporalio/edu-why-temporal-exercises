@@ -5,7 +5,7 @@ This repo is the hands-on component of the *How Software Survives Failure* cours
 One food-delivery order, three lenses:
 
 - **Reliability (Part 1).** Place an order, then break the world with a control panel, toggle off dependencies, kill the Worker, kill the order app, and watch the order survive: steps wait and retry through outages, and a killed Worker resumes where it left off, never double-charging.
-- **Insight (Part 2).** Open the real Temporal Web UI for that run and read its event history, every retry, wait, and recovery.
+- **Insight (Part 2).** Open the real Temporal Web UI for that run and read its event history: each step, each wait, and the recovery. Retries aren't separate events. A step's event records how many attempts it took, and a step that's still retrying shows its attempt count and last failure as a pending Activity.
 - **Velocity (Part 3).** A contrast between what Temporal handled for free and the machinery a team would otherwise build. **Deferred**, and likely a static or animated piece, so the app build here is Parts 1 and 2.
 
 ## Decisions
