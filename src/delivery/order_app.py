@@ -8,8 +8,7 @@ already running carries on without it, because Temporal is executing the order
 rather than this process.
 
 Nothing here limits the demo to one order at a time. The panel disables its
-button while an order is in flight, and for now that is the only thing enforcing
-it.
+button while an order is in flight, and that is the only thing enforcing it.
 
     uv run python -m uvicorn delivery.order_app:app --port 8084
 """

@@ -29,10 +29,14 @@ from pydantic import BaseModel
 from temporalio.client import Client
 
 from delivery.shared import (
+    DISPATCH_PORT,
     DISPATCH_URL,
     LOG_DIRECTORY,
+    ORDER_APP_PORT,
     ORDER_APP_URL,
+    PAYMENT_PORT,
     PAYMENT_URL,
+    RESTAURANT_PORT,
     RESTAURANT_URL,
     TEMPORAL_TARGET,
 )
@@ -187,27 +191,24 @@ async def connect_to_temporal() -> Client:
 # `app` rather than `order-app`, because the panel froze that vocabulary when it
 # was a mock and the backend conforms to it.
 #
-# The commands mirror the Makefile targets. That's a third copy of each port,
-# after the Makefile and `shared.py`, and worth collapsing at some point.
-#
 # Each `match` is a module path, which satisfies the supervisor's requirement
 # that the pattern appear in every process in the tree: `uv run python -m
 # uvicorn delivery.stubs.payment:app` and the child it forks both carry it.
 MANAGED_PROCESSES = {
     "payment": ProcessDefinition(
-        command="uv run python -m uvicorn delivery.stubs.payment:app --port 8081",
+        command=f"uv run python -m uvicorn delivery.stubs.payment:app --port {PAYMENT_PORT}",
         match="delivery.stubs.payment",
     ),
     "restaurant": ProcessDefinition(
-        command="uv run python -m uvicorn delivery.stubs.restaurant:app --port 8082",
+        command=f"uv run python -m uvicorn delivery.stubs.restaurant:app --port {RESTAURANT_PORT}",
         match="delivery.stubs.restaurant",
     ),
     "dispatch": ProcessDefinition(
-        command="uv run python -m uvicorn delivery.stubs.dispatch:app --port 8083",
+        command=f"uv run python -m uvicorn delivery.stubs.dispatch:app --port {DISPATCH_PORT}",
         match="delivery.stubs.dispatch",
     ),
     "app": ProcessDefinition(
-        command="uv run python -m uvicorn delivery.order_app:app --port 8084",
+        command=f"uv run python -m uvicorn delivery.order_app:app --port {ORDER_APP_PORT}",
         match="delivery.order_app",
     ),
     "worker": ProcessDefinition(
