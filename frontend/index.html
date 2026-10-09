@@ -422,7 +422,22 @@
     render();
   }
 
+  // The polls call render() every 700ms, and drawing rebuilds every switch and
+  // button. A click is a press and a release on the same element, so a rebuild
+  // between the two swallows the click. So render() draws only when something
+  // it draws has changed. Everything drawn comes from `state` and `pending`,
+  // which makes those two the whole fingerprint.
+  let lastDrawn = null;
+
   function render() {
+    const drawing = JSON.stringify({ ...state, sent: [...state.sent], pending: [...pending] });
+    if (drawing === lastDrawn) return;
+
+    lastDrawn = drawing;
+    draw();
+  }
+
+  function draw() {
     const o = state.order;
     const pill = document.getElementById("status-pill");
     pill.className = "status-pill" + (o ? " " + o.status : "");
