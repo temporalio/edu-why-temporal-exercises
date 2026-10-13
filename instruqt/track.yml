@@ -1,11 +1,13 @@
 slug: why-temporal
 id: g5jz2jnrvypu
-title: How Software Survives Failure
-teaser: We're going to break an order in every way possible and watch it survive.
+title: 'How Software Survives Failure: An Introduction to Durable Applications'
+teaser: Learn how durable applications survive crashes and outages by breaking one
+  yourself. Hands-on, no code required.
 description: |-
-  You'll place a food delivery order, and switch off every component that it needs to operate.
-  Yet, once you resume the components, the order will continue without interruption and
-  without duplication.
+  In these exercises, you'll interact with a simple food delivery application. You'll place an
+  order and watch it run through to the end. The catch? At any point, you can pull the rug out
+  from under it. Switch off any part of the application (for real), watch the order pause,
+  restore it, and watch it recover. Go ahead, try and break it. We dare you.
 icon: ""
 tags:
 - temporal
@@ -25,6 +27,6 @@ lab_config:
   override_challenge_layout: true
   hideStopButton: false
   default_layout: AssignmentLeft
-  default_layout_sidebar_size: 25
-checksum: "2102725965522108922"
+  default_layout_sidebar_size: 50
+checksum: "97195817837519208"
 enhanced_loading: false

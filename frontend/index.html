@@ -518,13 +518,13 @@
     if (o.status === "complete") {
       message = { tone: "done", text: "The order was delivered. Some steps may have been executed more than once, but idempotency in the individual services guarantees nothing was duplicated." };
     } else if (!state.worker) {
-      message = { tone: "down", text: "The worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the worker resumes it right where it left off." };
+      message = { tone: "down", text: "The Worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the Worker resumes it right where it left off." };
     } else {
       const step = o.steps[o.cursor];
       if (step.type === "call") {
         const doing = { charge: "Charging the customer's card.", restaurant: "Sending the order to the restaurant.", dispatch: "Dispatching a driver." };
         message = step.status === "retrying"
-          ? { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and it carries on the moment ${step.svc} is back.` }
+          ? { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and once ${step.svc} is back, it carries on with its next retry.` }
           : { tone: "info", text: doing[step.key] };
       } else {
         message = step.key === "kitchen"
