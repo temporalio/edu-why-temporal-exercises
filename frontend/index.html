@@ -157,6 +157,15 @@
   .lever-toggles { display: flex; gap: 8px; flex: 1; min-width: 0; }
   .lever-toggles .toggle { flex: 1; }
 
+  /* --------------------------------------------------------------- handled */
+  .handled-card[hidden] { display: none; }
+  .handled-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+  .handled-item { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 9px; border-radius: 8px; border: 1px solid var(--hairline); background: var(--surface-2); font-size: 12px; }
+  .handled-item .count { font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 999px; line-height: 16px; flex: none;
+    font-variant-numeric: tabular-nums; color: var(--text); background: var(--idle-fill); }
+  .handled-empty { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+
   /* -------------------------------------------------------------- keyframes */
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
   @keyframes blink { 50% { opacity: .25; } }
@@ -204,6 +213,13 @@
       <div class="lever-toggles" id="lever-slot"></div>
     </div>
   </section>
+
+  <!-- HANDLED: shown only in the Velocity exercise -->
+  <section class="card handled-card" id="handled-card" hidden>
+    <span class="eyebrow">What Temporal handled for you</span>
+    <ol class="handled-list" id="handled-list"></ol>
+    <p class="handled-empty" id="handled-empty">Place an order and start breaking things. Each piece of work Temporal takes care of will appear here.</p>
+  </section>
 </div>
 
 <script>
@@ -239,6 +255,108 @@
   // second click starts a second order that the panel never tracks.
   const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null, loaded: false, sent: new Set(), placing: null };
 
+  // ------------------------------------------------------------------ handled
+  //
+  // The Velocity exercise opens the panel at /?velocity, which adds a list of
+  // the work Temporal is doing that a developer would otherwise have to build.
+  // The other exercises open it at / and never see the list.
+  //
+  // The list covers the current order and starts empty with each new one. Each
+  // entry appears the first time its event happens and counts up after that,
+  // so a long outage adds to one line rather than flooding the list.
+  // The wording is all here, so it can be edited without touching the logic.
+  // An entry may only claim work Temporal really does: preventing a double
+  // charge is the services' job, not Temporal's, so it has no line here.
+  const VELOCITY = new URLSearchParams(location.search).has("velocity");
+
+  const HANDLED = {
+    placed:     "Temporal saved the progress of the order so it can survive a crash.",
+    stepDone:   "Temporal recorded that a step finished, so it won't run again after a failure.",
+    retrying:   "Temporal retried a failed step, tracked the attempts, and backed off if necessary.",
+    waiting:    "Temporal waited as long as it took, without keeping the application busy.",
+    heldSignal: "Temporal held a message until a Worker was available to process it.",
+    resumed:    "Temporal passed the stalled order to a live Worker, allowing it to resume from where it left off.",
+    appDown:    "Temporal ensured the order continued to run, even though the application that initiated it had stopped.",
+  };
+
+  const handled = new Map();  // HANDLED key -> how many times it has happened, in order of first appearance
+
+  function noteHandled(key) {
+    handled.set(key, (handled.get(key) || 0) + 1);
+  }
+
+  // What the panel last saw, to compare the next state against. null until the
+  // first state arrives, because an order that was already running when the
+  // page loaded is not something that just happened.
+  let lastSeen = null;
+
+  function snapshot() {
+    const o = state.order;
+    return {
+      orderId: o ? o.id : null,
+      running: Boolean(o && o.status === "running"),
+      statuses: o ? o.steps.map(step => step.status) : [],
+      worker: state.worker,
+      app: state.app,
+      sent: [...state.sent],
+    };
+  }
+
+  function observeHandled() {
+    if (!VELOCITY || !state.loaded) return;
+
+    const now = snapshot();
+    const before = lastSeen;
+    lastSeen = now;
+    if (!before) return;
+
+    // The list belongs to one order, so a new order starts it again.
+    //
+    // A new order's steps are compared with every step upcoming, not with the
+    // last order's. Its first state can already be a change: placed with the
+    // payment service off, it's retrying by the time the panel first sees it.
+    const isNewOrder = now.orderId !== null && now.orderId !== before.orderId;
+    if (isNewOrder) {
+      handled.clear();
+      noteHandled("placed");
+    }
+
+    const wasStatuses = isNewOrder ? now.statuses.map(() => "upcoming") : before.statuses;
+    now.statuses.forEach((status, i) => {
+      if (status === wasStatuses[i]) return;
+
+      if (status === "done") noteHandled("stepDone");
+      if (status === "retrying") noteHandled("retrying");
+      if (status === "waiting") noteHandled("waiting");
+    });
+
+    // A signal sent while the Worker is down sits on the Temporal server until
+    // a Worker comes back to process it.
+    const newlySent = now.sent.filter(signal => !before.sent.includes(signal));
+    if (newlySent.length > 0 && !now.worker) noteHandled("heldSignal");
+
+    if (now.running && now.worker && !before.worker) noteHandled("resumed");
+    if (now.running && !now.app && before.app) noteHandled("appDown");
+  }
+
+  function drawHandled() {
+    document.getElementById("handled-card").hidden = !VELOCITY;
+    if (!VELOCITY) return;
+
+    const list = document.getElementById("handled-list");
+    list.innerHTML = "";
+    handled.forEach((count, key) => {
+      const item = document.createElement("li");
+      item.className = "handled-item";
+      item.innerHTML = `<span>${HANDLED[key]}</span><span class="count">×${count}</span>`;
+      list.appendChild(item);
+    });
+
+    document.getElementById("handled-empty").hidden = handled.size > 0;
+  }
+
+  // ------------------------------------------------------------------ order
+  //
   // The server says only which step each one is on. The panel keeps the labels
   // and the shapes, so the two are merged by key.
   function orderFromServer(payload) {
@@ -425,12 +543,17 @@
   // The polls call render() every 700ms, and drawing rebuilds every switch and
   // button. A click is a press and a release on the same element, so a rebuild
   // between the two swallows the click. So render() draws only when something
-  // it draws has changed. Everything drawn comes from `state` and `pending`,
-  // which makes those two the whole fingerprint.
+  // it draws has changed. Everything drawn comes from `state`, `pending` and
+  // `handled`, which makes those three the whole fingerprint.
+  //
+  // Every change to `state` passes through here, so this is also where the
+  // handled list notices what just happened.
   let lastDrawn = null;
 
   function render() {
-    const drawing = JSON.stringify({ ...state, sent: [...state.sent], pending: [...pending] });
+    observeHandled();
+
+    const drawing = JSON.stringify({ ...state, sent: [...state.sent], pending: [...pending], handled: [...handled] });
     if (drawing === lastDrawn) return;
 
     lastDrawn = drawing;
@@ -496,6 +619,7 @@
       led.appendChild(div);
     });
 
+    drawHandled();
     renderControls();
   }
 
@@ -601,6 +725,7 @@
 
     state.placing = true;
     state.sent.clear();  // a new order's waits have not been released
+    handled.clear();     // the handled list covers one order
     render();
 
     try {
