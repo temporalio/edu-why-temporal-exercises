@@ -1,0 +1,32 @@
+slug: why-temporal
+id: g5jz2jnrvypu
+title: 'How Software Survives Failure: An Introduction to Durable Applications'
+teaser: Learn how durable applications survive crashes and outages by breaking one
+  yourself. Hands-on, no code required.
+description: |-
+  In these exercises, you'll interact with a simple food delivery application. You'll place an
+  order and watch it run through to the end. The catch? At any point, you can pull the rug out
+  from under it. Switch off any part of the application (for real), watch the order pause,
+  restore it, and watch it recover. Go ahead, try and break it. We dare you.
+icon: ""
+tags:
+- temporal
+owner: temporal
+developers:
+- wade.waldron@temporal.io
+idle_timeout: 300
+timelimit: 900
+lab_config:
+  extend_ttl: 900
+  sidebar_enabled: true
+  feedback_recap_enabled: true
+  feedback_tab_enabled: true
+  loadingMessages: true
+  theme:
+    name: modern-dark
+  override_challenge_layout: true
+  hideStopButton: false
+  default_layout: AssignmentLeft
+  default_layout_sidebar_size: 50
+checksum: "13138445712363683626"
+enhanced_loading: false
