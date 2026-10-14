@@ -19,7 +19,7 @@ tabs:
   path: /
   port: 8233
 difficulty: basic
-timelimit: 900
+timelimit: 1800
 enhanced_loading: null
 ---
 
