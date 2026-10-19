@@ -1,11 +1,12 @@
-#!/bin/bash
-# Track setup: start the Temporal dev server, then the control plane, which starts
-# the stubs, the order app and the Worker itself, then the watchdog that keeps the
-# Temporal dev server answering. Everything is installed in the image, so this only
-# starts processes.
+#!/usr/bin/env bash
+# Track setup: start the watchdog, which starts the Temporal dev server and keeps
+# it answering, then the control plane, which starts the stubs, the order app and
+# the Worker itself. Everything is installed in the image, so this only clears old
+# ledgers and starts processes.
 set -euo pipefail
+IFS=$'\t\n'
 
-# --- wait for Instruqt ------------------------------------------------------------
+# --- wait for Instruqt ------------------------------------------------------
 
 # Instruqt sets this file when the sandbox is ready. Outside Instruqt, for a local
 # test, set SKIP_INSTRUQT_BOOTSTRAP=1.
@@ -13,13 +14,16 @@ if [ "${SKIP_INSTRUQT_BOOTSTRAP:-0}" != "1" ]; then
     until [ -f /opt/instruqt/bootstrap/host-bootstrap-completed ]; do sleep 1; done
 fi
 
-# --- helpers ----------------------------------------------------------------------
+# --- helpers ----------------------------------------------------------------
 
+# Runs the command after the name once a second until it succeeds, giving up
+# after 60 tries. Each command passed in carries its own time limit, so a try
+# can't hang.
 wait_for() {
     local name="$1"
-    local check="$2"
+    shift
     for _ in $(seq 1 60); do
-        if eval "$check" >/dev/null 2>&1; then
+        if "$@" >/dev/null 2>&1; then
             echo "$name is up"
             return 0
         fi
@@ -29,26 +33,17 @@ wait_for() {
     return 1
 }
 
-# --- Temporal dev server ------------------------------------------------------------
+# --- Temporal dev server, through the watchdog ------------------------------
 
-# State goes in a file rather than memory, so the watchdog can restart the server
-# without losing any order. The watchdog starts it with these same settings.
-nohup temporal server start-dev --ip 0.0.0.0 --log-level warn --db-filename /root/temporal.db \
-    > /tmp/temporal-server.log 2>&1 &
-wait_for "Temporal dev server" "temporal operator cluster health --address 127.0.0.1:7233"
+# The watchdog starts the server, restarts it if it dies or stops answering, and
+# keeps its own log, which the cleanup script prints into Instruqt's lifecycle log.
+nohup /root/workshop/sandbox/temporal-watchdog > /dev/null 2>&1 &
+wait_for "Temporal dev server" timeout 2 temporal operator cluster health --address 127.0.0.1:7233
 
-# --- control plane ------------------------------------------------------------------
+# --- control plane ----------------------------------------------------------
 
 cd /root/workshop
 rm -f logs/*-ledger.json logs/*-ledger.tmp
 nohup uv run python -m uvicorn delivery.control_plane:app --host 0.0.0.0 --port 8085 \
     > /tmp/control-plane.log 2>&1 &
-wait_for "Chaos panel" "curl -sf http://127.0.0.1:8085/state"
-
-# --- watchdog -----------------------------------------------------------------------
-
-# Restarts the Temporal dev server if it dies or stops answering, and logs to
-# /tmp/temporal-watchdog.log. The cleanup script prints that log into Instruqt's
-# lifecycle log.
-nohup /root/workshop/sandbox/temporal-watchdog > /dev/null 2>&1 &
-wait_for "Watchdog" "test -s /tmp/temporal-watchdog.log"
+wait_for "Chaos panel" curl -sf -m 2 http://127.0.0.1:8085/state
