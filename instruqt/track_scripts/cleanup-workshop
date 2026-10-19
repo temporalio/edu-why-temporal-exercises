@@ -1,0 +1,34 @@
+#!/bin/bash
+# Track cleanup: print what the watchdog saw, the end of the Temporal dev server's
+# log and the container's memory, so they land in Instruqt's lifecycle log before
+# the sandbox is destroyed. Instruqt keeps that log; it doesn't keep the sandbox.
+#
+# Instruqt stamps each line of output with the time it arrived and sorts by it, so
+# lines that arrive in the same millisecond can show up out of order. Each line is
+# printed after a short pause, so every one gets its own timestamp.
+#
+# Nothing here may stop cleanup, so a missing file is reported, not fatal.
+set -uo pipefail
+
+# --- report -----------------------------------------------------------------
+
+report() {
+    echo "--- Temporal watchdog log"
+    cat /tmp/temporal-watchdog.log 2>/dev/null || echo "(no watchdog log)"
+
+    echo "--- Last 20 lines of the Temporal dev server log"
+    tail -n 20 /tmp/temporal-server.log 2>/dev/null || echo "(no server log)"
+
+    echo "--- Container memory (bytes used, limit) and out-of-memory events"
+    cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.events 2>/dev/null \
+        || echo "(no cgroup memory files)"
+}
+
+# --- print, paced -------------------------------------------------------------
+
+report | while IFS= read -r line; do
+    printf '%s\n' "$line"
+    sleep 0.01
+done
+
+exit 0
