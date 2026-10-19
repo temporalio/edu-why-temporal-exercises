@@ -12,7 +12,7 @@ tabs:
   path: /
   port: 8085
 - id: ay5i2apna0jg
-  title: Temporal UI
+  title: Temporal Web UI
   type: service
   hostname: workshop
   path: /
@@ -26,11 +26,11 @@ In the previous exercise, you watched an order survive everything you threw at i
 
 However, the architecture behind Temporal is different. Temporal records every step of a Workflow (the process that carries an order from start to finish) as an event in its Event History. These events, and the data they contain, are then made visible directly through the Temporal user interface.
 
-In this exercise, you'll look at an order through the [button label="Temporal UI" background="#444CE7"](tab-1) and see what it can tell you that the panel can't.
+In this exercise, you'll look at an order through the Temporal Web UI and see what it can tell you that the panel can't.
 
 # Finding your order
 
-In the [button label="Chaos Panel" background="#444CE7"](tab-0), place an order. Then open the [button label="Temporal UI" background="#444CE7"](tab-1).
+In the [button label="Chaos Panel" background="#444CE7"](tab-0), place an order. Then open the [button label="Temporal Web UI" background="#444CE7"](tab-1).
 
 Each order is a Workflow, and its Workflow ID is the order ID shown on the panel. If your order isn't in the list yet, click **Refresh**. Then click your order to open it.
 
@@ -38,15 +38,15 @@ Each order is a Workflow, and its Workflow ID is the order ID shown on the panel
 
 At the top, you'll see whether the order is still running, and how long it has taken so far. Below that, **Input** shows exactly what the order started with: the item and the amount to charge.
 
-![The order's page in the Temporal UI: its status, its ID, and the order details it started with](../assets/ui-order.png)
+![The order's page in the Temporal Web UI: its status, its ID, and the order details it started with](../assets/ui-order.png)
 
 # Asking the order where it is
 
-Temporal Workflows can expose details about their state that can be queried by other applications, such as the Temporal UI. Our order Workflow has a query that exposes the current step that the Workflow is in. We can use that to determine how far the Workflow has advanced.
+Temporal Workflows can expose details about their state that can be queried by other applications, such as the Temporal Web UI. Our order Workflow has a query that exposes the current step that the Workflow is in. We can use that to determine how far the Workflow has advanced.
 
 Let the order reach **Kitchen prep** on the panel, and leave it waiting there.
 
-In the Temporal UI, open the **Queries** tab.
+In the Temporal Web UI, open the **Queries** tab.
 
 ![The order's page, with the Queries tab highlighted](../assets/ui-queries-tab.png)
 
@@ -62,7 +62,7 @@ Return to the [button label="Chaos Panel" background="#444CE7"](tab-0) and click
 
 On the panel, switch off the Charge payment step, then place a new order. **Charge payment** shows **Retrying**, and the panel tells you the payment service is down. However, it won't show any of the additional details such as how many times it has tried, when it will try next, or what the error message was.
 
-In the [button label="Temporal UI" background="#444CE7"](tab-1), open the new order and click the **Pending Activities** tab. In Temporal, each call to an outside service is an Activity, so this tab shows the calls that haven't finished yet.
+In the [button label="Temporal Web UI" background="#444CE7"](tab-1), open the new order and click the **Pending Activities** tab. In Temporal, each call to an outside service is an Activity, so this tab shows the calls that haven't finished yet.
 
 ![Pending Activities while payment is down: attempt 7 of unlimited, the time of the next retry, and the error "payment service unreachable"](../assets/ui-pending-activities.png)
 
@@ -80,7 +80,7 @@ With the order waiting at **Kitchen prep**, switch off the **Worker**. Click **F
 
 # Reading the history
 
-In the [button label="Temporal UI" background="#444CE7"](tab-1), open the completed order. The **Timeline** shows every service call as a bar.
+In the [button label="Temporal Web UI" background="#444CE7"](tab-1), open the completed order. The **Timeline** shows every service call as a bar.
 
 ![The Timeline: the charge_payment bar runs red to green with a retry count of 7, followed by the other steps and both Signals](../assets/ui-timeline.png)
 
@@ -114,8 +114,8 @@ Read it from the top:
 
 # What the UI doesn't show
 
-The Temporal UI shows what the Workflow did, but not what happened inside each service. It doesn't know whether a customer was charged once or twice. Temporal will retry a failed step until it succeeds, but how that retry behaves depends on the business needs. In this case, the business requires that we don't charge the same card twice, but in some business scenarios, performing the same action multiple times might be the desired result. Therefore, it is up to the developer to decide how the retry behaves and what information it should expose. In the Chaos Panel, we have deliberately exposed each service's ledger and rendered that on the panel.
+The Temporal Web UI shows what the Workflow did, but not what happened inside each service. It doesn't know whether a customer was charged once or twice. Temporal will retry a failed step until it succeeds, but how that retry behaves depends on the business needs. In this case, the business requires that we don't charge the same card twice, but in some business scenarios, performing the same action multiple times might be the desired result. Therefore, it is up to the developer to decide how the retry behaves and what information it should expose. In the Chaos Panel, we have deliberately exposed each service's ledger and rendered that on the panel.
 
 # Try your own experiments
 
-Feel free to try your own scenarios. Explore the UI to see what options are available. Break the Workflow and see how the Temporal UI responds. At each stage, Temporal can provide you with insight into what went wrong, while also making sure the work isn't lost.
+Feel free to try your own scenarios. Explore the UI to see what options are available. Break the Workflow and see how the Temporal Web UI responds. At each stage, Temporal can provide you with insight into what went wrong, while also making sure the work isn't lost.

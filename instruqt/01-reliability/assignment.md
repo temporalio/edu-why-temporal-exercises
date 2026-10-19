@@ -23,7 +23,7 @@ timelimit: 1800
 enhanced_loading: null
 ---
 
-In this exercise, you'll interact with what we have dubbed the "Chaos Panel". It allows you to place an order with a fictional food delivery service.
+In this exercise, you'll interact with what we have dubbed the _Chaos Panel_. It allows you to place an order with a fictional food delivery service.
 
 Open the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
 
@@ -35,7 +35,7 @@ Below the text box, you'll find five boxes, each representing a different stage 
 
 ![The five stages: Charge payment and Send to restaurant are done, Kitchen prep is waiting with its Finish button, and Dispatch driver and Delivery are still to come](../assets/panel-stages.png)
 
-Beneath the stages, you'll see three "ledgers". These track the external services to show how many times they completed a specific stage. The services are idempotent, meaning that repeating the same request has no extra effect, and the ledgers are how you can tell. No matter how many times a stage is retried, we only want a single result. We don't want to accidentally charge someone for an order twice, or accidentally request two separate drivers. At any given point, the ledger should either read `×0`, `×1`, or `??` if its state is unknown because the service is switched off. We never want to see it go beyond `×1` because that would indicate we've accidentally duplicated data.
+Beneath the stages, you'll see three _ledgers_. These track the external services to show how many times they completed a specific stage. The services are idempotent, meaning that repeating the same request has no extra effect, and the ledgers are how you can tell. No matter how many times a stage is retried, we only want a single result. We don't want to accidentally charge someone for an order twice, or accidentally request two separate drivers. At any given point, the ledger should either read `×0`, `×1`, or `??` if its state is unknown because the service is switched off. We never want to see it go beyond `×1` because that would indicate we've accidentally duplicated data.
 
 ![The three ledgers: Payments Received and Orders Received each read ×1, and Orders Dispatched reads ×0](../assets/panel-ledgers.png)
 
@@ -46,13 +46,13 @@ And finally, at the bottom, you'll see the **Place order** button and two more t
 The question becomes, what happens when we start breaking parts of the system?
 
 > [!NOTE]
-> This is not a simulation. Although the food delivery company isn't real, the system running it has real elements. The payment, restaurant and dispatch services are simplified stand-ins for real services, but each one is a real running process, and clicking a toggle actually kills or restarts it. A real Temporal server runs behind this to keep the order alive.
+> This is not a simulation. Although the food delivery company isn't real, the system running it has real elements. The payment, restaurant and dispatch services are simplified stand-ins for real services, but each one is a real running process, and clicking a toggle actually kills or restarts it. A real Temporal Service runs behind this to keep the order alive.
 
 # Interacting with the Chaos Panel
 
 ## Placing an order
 
-The first step should be to place an order and watch it flow through the system. At certain points, you will be required to interact with it by clicking a "Finish" button to move to the next step.
+The first step should be to place an order and watch it flow through the system. At certain points, you will be required to interact with it by clicking a **Finish** button to move to the next step.
 
 Try placing an order now. You can only run one order at a time, so the **Place order** button reads **One at a time** until the current order completes.
 

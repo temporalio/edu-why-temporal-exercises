@@ -13,7 +13,7 @@ tabs:
   path: /?velocity
   port: 8085
 - id: y320fos0ub8p
-  title: Temporal UI
+  title: Temporal Web UI
   type: service
   hostname: workshop
   path: /
@@ -51,7 +51,7 @@ Even with nothing broken, the list fills up. Temporal saved the order's progress
 
 Now repeat some of what you did in the first exercise, and watch the list as you go:
 
-- **Switch off the Charge payment step, then place an order.** Notice that a line has appeared for the retries. Its count goes up once for each outage, not for every attempt, so it reads `×1` even though the Temporal UI showed many attempts. Switch the **Charge payment** step back on and let the order continue.
+- **Switch off the Charge payment step, then place an order.** Notice that a line has appeared for the retries. Its count goes up once for each outage, not for every attempt, so it reads `×1` even though the Temporal Web UI showed many attempts. Switch the **Charge payment** step back on and let the order continue.
 - **Kill the Worker while the order waits at the kitchen.** Click **Finish** while the Worker is down, and switch the Worker back on. Two lines appear: one for holding the message until a Worker could process it, and one for handing the order to the new Worker so it could carry on from where it left off.
 - **Switch off the Order app while an order is running.** A line appears for keeping the order running without it.
 
