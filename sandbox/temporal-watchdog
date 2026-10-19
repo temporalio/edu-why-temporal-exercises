@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Keeps the sandbox's Temporal dev server running and answering, and records it
+# when the Chaos Panel's control plane stops answering.
+#
+# The Temporal dev server is restarted as soon as its process is gone, or after it
+# fails two health checks in a row. A server the watchdog has just started gets a
+# few seconds to come up, and is then judged like any other, so one that hangs
+# while starting is caught too. It keeps its state in a SQLite file, so a
+# restart brings every Workflow back as it was and costs a learner a pause of a
+# few seconds. That's why the checks are quick to give up on it.
+#
+# The control plane is only watched, never restarted: it holds the current order
+# and the learner's switches in memory, so a restart would lose them.
+#
+# Nothing else is touched. The panel's five components are switched off on purpose
+# by learners, and must stay off.
+#
+# Every failure and restart is written to the log, with memory and the busiest
+# processes at the moment it happened, so a restart leaves evidence of its cause.
+set -euo pipefail
+IFS=$'\t\n'
+
+# --- settings ---------------------------------------------------------------
+
+INTERVAL="${WATCHDOG_INTERVAL:-2}"                     # seconds between checks
+CHECK_TIMEOUT="${WATCHDOG_CHECK_TIMEOUT:-2}"           # seconds a check may take
+FAILURES_BEFORE_RESTART="${WATCHDOG_FAILURES:-2}"      # failed checks in a row
+STARTUP_GRACE="${WATCHDOG_STARTUP_GRACE:-5}"           # seconds a new server has to start answering
+LOG="${WATCHDOG_LOG:-/tmp/temporal-watchdog.log}"
+DB="${TEMPORAL_DB:-/root/temporal.db}"
+SERVER_LOG="${TEMPORAL_SERVER_LOG:-/tmp/temporal-server.log}"
+CONTROL_PLANE_URL="${CONTROL_PLANE_URL:-http://127.0.0.1:8085/}"
+SERVER_PATTERN="temporal server start-dev"
+
+# --- helpers ----------------------------------------------------------------
+
+record() {
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >> "$LOG"
+}
+
+snapshot() {
+    {
+        echo "--- container memory (bytes used, limit)"
+        cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max
+        echo "--- container out-of-memory events"
+        cat /sys/fs/cgroup/memory.events
+        echo "--- processes, by resident memory"
+        ps -eo pid,stat,rss,etime,args --sort=-rss | head -15
+    } >> "$LOG" 2>&1 || true
+}
+
+server_running() {
+    pgrep -f "$SERVER_PATTERN" >/dev/null
+}
+
+server_healthy() {
+    timeout "$CHECK_TIMEOUT" temporal operator cluster health --address 127.0.0.1:7233 >/dev/null 2>&1
+}
+
+control_plane_healthy() {
+    curl -sf -m "$CHECK_TIMEOUT" -o /dev/null "$CONTROL_PLANE_URL"
+}
+
+start_server() {
+    nohup temporal server start-dev --ip 0.0.0.0 --log-level warn --db-filename "$DB" \
+        >> "$SERVER_LOG" 2>&1 &
+}
+
+# Replaces the server and returns at once. It doesn't wait for the new one to
+# answer: the main loop keeps checking, so a new server that hangs while starting
+# is caught like any other.
+restart_server() {
+    local reason="$1"
+    record "restarting the Temporal dev server: $reason"
+    snapshot
+
+    pkill -9 -f "$SERVER_PATTERN" || true
+    for _ in $(seq 1 10); do
+        if ! server_running; then
+            break
+        fi
+        sleep 0.2
+    done
+
+    start_server
+    restarted_at=$(date +%s)
+    awaiting_restart=true
+}
+
+# --- watch ------------------------------------------------------------------
+
+record "watching every ${INTERVAL}s; restarting Temporal after ${FAILURES_BEFORE_RESTART} failed checks"
+failures=0
+control_plane_up=true
+restarted_at=0
+awaiting_restart=false
+while true; do
+    # Temporal: a missing process is restarted at once; an unresponsive one after
+    # a run of failed checks. A server the watchdog just started gets a few seconds
+    # to come up before its failed checks count.
+    if ! server_running; then
+        restart_server "its process is gone"
+        failures=0
+    elif server_healthy; then
+        if [ "$awaiting_restart" = true ]; then
+            record "the Temporal dev server is back after $(( $(date +%s) - restarted_at ))s"
+            awaiting_restart=false
+        elif [ "$failures" -gt 0 ]; then
+            record "Temporal answering again after $failures failed check(s)"
+        fi
+        failures=0
+    elif [ "$awaiting_restart" = true ] && [ $(( $(date +%s) - restarted_at )) -lt "$STARTUP_GRACE" ]; then
+        : # still starting
+    else
+        failures=$((failures + 1))
+        record "Temporal health check failed ($failures of $FAILURES_BEFORE_RESTART)"
+        if [ "$failures" -ge "$FAILURES_BEFORE_RESTART" ]; then
+            restart_server "not answering"
+            failures=0
+        fi
+    fi
+
+    # The control plane: record when it stops and starts answering, nothing more.
+    if control_plane_healthy; then
+        if [ "$control_plane_up" = false ]; then
+            record "the control plane is answering again"
+        fi
+        control_plane_up=true
+    else
+        if [ "$control_plane_up" = true ]; then
+            record "the control plane stopped answering"
+            snapshot
+        fi
+        control_plane_up=false
+    fi
+
+    sleep "$INTERVAL"
+done
