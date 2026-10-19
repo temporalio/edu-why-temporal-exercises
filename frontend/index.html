@@ -640,7 +640,7 @@
       : { tone: "down", text: "The order app is down, so no new orders can be placed. Bring it back up to start one." };
     let message;
     if (o.status === "complete") {
-      message = { tone: "done", text: "The order was delivered. Some steps may have been executed more than once, but idempotency in the individual services guarantees nothing was duplicated." };
+      message = { tone: "done", text: "The order was delivered. Some steps may have run more than once, but idempotency in the individual services guarantees nothing was duplicated." };
     } else if (!state.worker) {
       message = { tone: "down", text: "The Worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the Worker resumes it right where it left off." };
     } else {
