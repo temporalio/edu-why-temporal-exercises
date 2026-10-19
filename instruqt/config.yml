@@ -1,6 +1,6 @@
 version: "3"
 containers:
 - name: workshop
-  image: ghcr.io/temporalio/why-temporal-sandbox@sha256:4d6c20e4042ce9003d4f1069839a37c0787118c26b7be1a66f272db8edb05b94
+  image: ghcr.io/temporalio/why-temporal-sandbox@sha256:75945e70e46d8a3d290e8b29a315f912e486188c945ed2331858bd1ac5373404
   shell: /bin/bash
   memory: 2048

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Track cleanup: print what the watchdog saw, the end of the Temporal dev server's
 # log and the container's memory, so they land in Instruqt's lifecycle log before
 # the sandbox is destroyed. Instruqt keeps that log; it doesn't keep the sandbox.
@@ -7,26 +7,41 @@
 # lines that arrive in the same millisecond can show up out of order. Each line is
 # printed after a short pause, so every one gets its own timestamp.
 #
-# Nothing here may stop cleanup, so a missing file is reported, not fatal.
+# Unlike the other scripts, this one runs without `set -e`: nothing here may stop
+# cleanup, so a missing file is reported, not fatal.
 set -uo pipefail
+IFS=$'\t\n'
 
 # --- report -----------------------------------------------------------------
 
 report() {
     echo "--- Temporal watchdog log"
     cat /tmp/temporal-watchdog.log 2>/dev/null || echo "(no watchdog log)"
+    if pgrep -f temporal-watchdog >/dev/null; then
+        echo "(the watchdog was still running at cleanup)"
+    else
+        echo "(the watchdog was NOT running at cleanup)"
+    fi
 
     echo "--- Last 20 lines of the Temporal dev server log"
-    tail -n 20 /tmp/temporal-server.log 2>/dev/null || echo "(no server log)"
+    # A log cut off by a kill can end without a newline; sed adds one, so the next
+    # heading starts on its own line.
+    if [ -f /tmp/temporal-server.log ]; then
+        tail -n 20 /tmp/temporal-server.log | sed -e '$a\'
+    else
+        echo "(no server log)"
+    fi
 
     echo "--- Container memory (bytes used, limit) and out-of-memory events"
     cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.events 2>/dev/null \
         || echo "(no cgroup memory files)"
 }
 
-# --- print, paced -------------------------------------------------------------
+# --- print, paced -----------------------------------------------------------
 
-report | while IFS= read -r line; do
+# `|| [ -n "$line" ]` keeps a last line that has no newline, so nothing the report
+# prints is ever dropped.
+report | while IFS= read -r line || [ -n "$line" ]; do
     printf '%s\n' "$line"
     sleep 0.01
 done
