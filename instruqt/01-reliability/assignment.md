@@ -25,9 +25,11 @@ enhanced_loading: null
 
 In this exercise, you'll interact with what we have dubbed the _Chaos Panel_. It allows you to place an order with a fictional food delivery service.
 
-Open the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
+# A tour of the Chaos Panel
 
-At the top of the Chaos Panel, you'll see the order's status: **No order**, **Running**, **Paused** or **Complete**. Just below it is a text box. This box will carry descriptive messages about the current state of the system so you can follow along.
+You'll find the panel in the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
+
+At the top of the panel, you'll see the order's status: **No order**, **Running**, **Paused** or **Complete**. Just below it is a text box. This box will carry descriptive messages about the current state of the system so you can follow along.
 
 ![The top of the Chaos Panel: the order's status reads Running, and the text box below it says the order is parked at the kitchen](../assets/panel-status.png)
 
@@ -35,7 +37,7 @@ Below the text box, you'll find five boxes, each representing a different stage 
 
 ![The five stages: Charge payment and Send to restaurant are done, Kitchen prep is waiting with its Finish button, and Dispatch driver and Delivery are still to come](../assets/panel-stages.png)
 
-Beneath the stages, you'll see three _ledgers_. These track the external services to show how many times they completed a specific stage. The services are idempotent, meaning that repeating the same request has no extra effect, and the ledgers are how you can tell. No matter how many times a stage is retried, we only want a single result. We don't want to accidentally charge someone for an order twice, or accidentally request two separate drivers. At any given point, the ledger should either read `×0`, `×1`, or `??` if its state is unknown because the service is switched off. We never want to see it go beyond `×1` because that would indicate we've accidentally duplicated data.
+Beneath the stages, you'll see three _ledgers_. These track the external services to show how many times they completed a specific stage. The services are idempotent, meaning that repeating the same request has no extra effect, and the ledgers are how you can tell. No matter how many times a stage is retried, we only want a single result. We don't want to accidentally charge someone for an order twice, or accidentally request two separate drivers. At any given point, the ledger will display `×0` or `×1` if the service is running, or `??` if the state is unknown because the service is switched off. We never want to see it go beyond `×1` because that would indicate we've accidentally duplicated data.
 
 ![The three ledgers: Payments Received and Orders Received each read ×1, and Orders Dispatched reads ×0](../assets/panel-ledgers.png)
 
@@ -89,6 +91,6 @@ Remember to check the counts on the ledgers as the order progresses. You should 
 # Try to break it
 
 Now do your worst. Switch off everything at once, kill the Worker in the middle of a step,
-bring things back in a different order. Toggle a service off/on as many times as you like. When everything is back on, the order finishes, and the ledgers record only a single instance having completed, no matter how many pieces had to get retried.
+bring things back in a different order. Toggle a service off/on as many times as you like. When everything is back on, the order picks up where it left off, and once it's delivered, the ledgers record only a single instance having completed, no matter how many pieces had to get retried.
 
 In the next exercise, we'll look at how Temporal recorded everything you just did.
