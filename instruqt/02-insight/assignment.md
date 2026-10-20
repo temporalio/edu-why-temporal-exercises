@@ -110,11 +110,11 @@ Read it from the top:
 4. **Workflow Task Timed Out:** Temporal tries to assign the work to the Worker, but because it has been killed, the task times out.
 5. **Workflow Task Scheduled:** Temporal reschedules the work for another attempt.
 6. **Workflow Task Started:** now that the Worker has been restarted, it picks up the work.
-7. **Workflow Task Completed:** the work is completed successfully, using the new Worker. Note that its **Identity** is different because it is a new process.
+7. **Workflow Task Completed:** the work is completed successfully, using the new Worker. Note that its **Identity** is different because it is a new instance.
 
 # What the UI doesn't show
 
-The Temporal Web UI shows what the Workflow did, but not what happened inside each service. It doesn't know whether a customer was charged once or twice. Temporal will retry a failed step until it succeeds, but how that retry behaves depends on the business needs. In this case, the business requires that we don't charge the same card twice, but in some business scenarios, performing the same action multiple times might be the desired result. Therefore, it is up to the developer to decide how the retry behaves and what information it should expose. In the Chaos Panel, we have deliberately exposed each service's ledger and rendered that on the panel.
+The Temporal Web UI shows what the Workflow did. What happens inside each service is that service's job, and Temporal deliberately stays out of it. It doesn't know whether a customer was charged once or twice. Temporal will retry a failed step until it succeeds, but how that retry behaves depends on the business needs. In this case, the business requires that we don't charge the same card twice, but in some business scenarios, performing the same action multiple times might be the desired result. Therefore, it is up to the developer to decide how the retry behaves and what information it should expose. In the Chaos Panel, we have deliberately exposed each service's ledger and rendered that on the panel.
 
 # Try your own experiments
 

@@ -23,7 +23,7 @@ timelimit: 1800
 enhanced_loading: null
 ---
 
-You've seen how Temporal ensures your application survives everything you throw at it, and how it exposes exactly what happened. However, what is less obvious is how this impacts the velocity of a Temporal developer.
+You've seen how Temporal ensures your application survives everything you throw at it, and how it exposes exactly what happened. However, what is less obvious is how this improves the velocity of a Temporal application developer.
 
 In a typical application, the developer is responsible for building all of the infrastructure that makes this work. This could include tracking each event as it occurs, building systems to avoid losing events during failure scenarios, and sending those events through a message queue.
 
@@ -73,4 +73,4 @@ Each of those is real engineering work, and each is another system that can fail
 > [!NOTE]
 > Temporal doesn't do everything. As you saw in the previous exercise, making sure a retried step doesn't charge a customer twice is still the job of the payment service. Temporal makes sure the work gets done. Deciding the right behavior is up to the developer.
 >
-> Temporal also has costs of its own. Someone has to run the Temporal Service, or pay for Temporal Cloud. Workflow code has to follow some rules so Temporal can rebuild where an order left off, and changing a Workflow while orders are still running takes care. However, compared to the costs of doing it without Temporal, these are small.
+> Temporal also has costs of its own. Someone has to operate the Temporal Service, or pay for Temporal Cloud. Workflow code has to follow some rules so the Workflow can pick up where an order left off, and changing a Workflow while orders are still running requires care. However, compared to the costs of doing it without Temporal, these costs are small.
