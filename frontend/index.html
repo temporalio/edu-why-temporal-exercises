@@ -144,6 +144,7 @@
   .switch:checked { background: var(--green-fill); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
   .switch:checked::after { transform: translateX(15px); background: var(--green); }
   .switch:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .switch:disabled { cursor: progress; opacity: 0.6; }
 
   /* ---------------------------------------------------------- global levers */
   .levers { display: flex; align-items: center; gap: 8px; }
@@ -155,6 +156,15 @@
   .place-btn:disabled { cursor: not-allowed; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--hairline); color: var(--muted); }
   .lever-toggles { display: flex; gap: 8px; flex: 1; min-width: 0; }
   .lever-toggles .toggle { flex: 1; }
+
+  /* --------------------------------------------------------------- handled */
+  .handled-card[hidden] { display: none; }
+  .handled-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+  .handled-item { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 9px; border-radius: 8px; border: 1px solid var(--hairline); background: var(--surface-2); font-size: 12px; }
+  .handled-item .count { font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 999px; line-height: 16px; flex: none;
+    font-variant-numeric: tabular-nums; color: var(--text); background: var(--idle-fill); }
+  .handled-empty { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 
   /* -------------------------------------------------------------- keyframes */
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
@@ -203,6 +213,13 @@
       <div class="lever-toggles" id="lever-slot"></div>
     </div>
   </section>
+
+  <!-- HANDLED: shown only in the Velocity exercise -->
+  <section class="card handled-card" id="handled-card" hidden>
+    <span class="eyebrow">What Temporal handled for you</span>
+    <ol class="handled-list" id="handled-list"></ol>
+    <p class="handled-empty" id="handled-empty">Place an order and start breaking things. Each piece of work Temporal takes care of will appear here.</p>
+  </section>
 </div>
 
 <script>
@@ -219,20 +236,127 @@
     dispatch:   { name: "Orders Dispatched" },
   };
 
-  // Everything here mirrors what the control plane reports, so the flags
-  // describe real processes rather than what was last clicked.
+  // The order comes from the control plane, since only the server knows how far
+  // it has got. The components and `sent` change only when someone clicks in
+  // this panel, so the panel draws a click straight away and holds it, and the
+  // control plane's view of them is read back by the refresh further down.
   //
   // `loaded` separates "there is no order" from "we haven't heard yet". They
   // look identical in `order: null` and mean opposite things: the first should
   // enable the Place order button, the second must not, or a refresh while an
   // order is running offers a button that would start a second one.
-  // `sent` holds the signals that have already gone, and comes from the
-  // control plane so that it survives a reload. The Finish buttons are drawn
-  // from a polled snapshot, so without it a button stays live until the panel
-  // next sees the step move on, which is long enough to send the same signal
-  // several times.
-  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null, loaded: false, sent: new Set() };
+  // `sent` holds the signals that have already gone. It is read from the
+  // control plane on load so that it survives a reload, and without it a
+  // Finish button stays live until the panel sees the step move on, which is
+  // long enough to send the same signal several times.
+  // `placing` covers the gap between clicking Place order and the panel seeing
+  // the new order: true while the request is out, then the new order's id until
+  // a poll reports it. Without it the button stays live through that gap, and a
+  // second click starts a second order that the panel never tracks.
+  const state = { services: { payment: true, restaurant: true, dispatch: true }, worker: true, app: true, order: null, loaded: false, sent: new Set(), placing: null };
 
+  // ------------------------------------------------------------------ handled
+  //
+  // The Velocity exercise opens the panel at /?velocity, which adds a list of
+  // the work Temporal is doing that a developer would otherwise have to build.
+  // The other exercises open it at / and never see the list.
+  //
+  // The list covers the current order and starts empty with each new one. Each
+  // entry appears the first time its event happens and counts up after that,
+  // so a long outage adds to one line rather than flooding the list.
+  // The wording is all here, so it can be edited without touching the logic.
+  // An entry may only claim work Temporal really does: preventing a double
+  // charge is the services' job, not Temporal's, so it has no line here.
+  const VELOCITY = new URLSearchParams(location.search).has("velocity");
+
+  const HANDLED = {
+    placed:     "Temporal saved the progress of the order so it can survive a crash.",
+    stepDone:   "Temporal recorded that a step finished, so it won't run again after a failure.",
+    retrying:   "Temporal retried a failed step, tracked the attempts, and backed off if necessary.",
+    waiting:    "Temporal waited as long as it took, without keeping the application busy.",
+    heldSignal: "Temporal held a message until a Worker was available to process it.",
+    resumed:    "Temporal passed the stalled order to a live Worker, allowing it to resume from where it left off.",
+    appDown:    "Temporal ensured the order continued to run, even though the application that initiated it had stopped.",
+  };
+
+  const handled = new Map();  // HANDLED key -> how many times it has happened, in order of first appearance
+
+  function noteHandled(key) {
+    handled.set(key, (handled.get(key) || 0) + 1);
+  }
+
+  // What the panel last saw, to compare the next state against. null until the
+  // first state arrives, because an order that was already running when the
+  // page loaded is not something that just happened.
+  let lastSeen = null;
+
+  function snapshot() {
+    const o = state.order;
+    return {
+      orderId: o ? o.id : null,
+      running: Boolean(o && o.status === "running"),
+      statuses: o ? o.steps.map(step => step.status) : [],
+      worker: state.worker,
+      app: state.app,
+      sent: [...state.sent],
+    };
+  }
+
+  function observeHandled() {
+    if (!VELOCITY || !state.loaded) return;
+
+    const now = snapshot();
+    const before = lastSeen;
+    lastSeen = now;
+    if (!before) return;
+
+    // The list belongs to one order, so a new order starts it again.
+    //
+    // A new order's steps are compared with every step upcoming, not with the
+    // last order's. Its first state can already be a change: placed with the
+    // payment service off, it's retrying by the time the panel first sees it.
+    const isNewOrder = now.orderId !== null && now.orderId !== before.orderId;
+    if (isNewOrder) {
+      handled.clear();
+      noteHandled("placed");
+    }
+
+    const wasStatuses = isNewOrder ? now.statuses.map(() => "upcoming") : before.statuses;
+    now.statuses.forEach((status, i) => {
+      if (status === wasStatuses[i]) return;
+
+      if (status === "done") noteHandled("stepDone");
+      if (status === "retrying") noteHandled("retrying");
+      if (status === "waiting") noteHandled("waiting");
+    });
+
+    // A signal sent while the Worker is down sits on the Temporal server until
+    // a Worker comes back to process it.
+    const newlySent = now.sent.filter(signal => !before.sent.includes(signal));
+    if (newlySent.length > 0 && !now.worker) noteHandled("heldSignal");
+
+    if (now.running && now.worker && !before.worker) noteHandled("resumed");
+    if (now.running && !now.app && before.app) noteHandled("appDown");
+  }
+
+  function drawHandled() {
+    document.getElementById("handled-card").hidden = !VELOCITY;
+    if (!VELOCITY) return;
+
+    const list = document.getElementById("handled-list");
+    list.innerHTML = "";
+    handled.forEach((count, key) => {
+      const item = document.createElement("li");
+      item.className = "handled-item";
+      item.innerHTML = `<span>${HANDLED[key]}</span><span class="count">×${count}</span>`;
+      list.appendChild(item);
+    });
+
+    document.getElementById("handled-empty").hidden = handled.size > 0;
+  }
+
+  // ------------------------------------------------------------------ order
+  //
   // The server says only which step each one is on. The panel keeps the labels
   // and the shapes, so the two are merged by key.
   function orderFromServer(payload) {
@@ -265,60 +389,178 @@
   // three services, because the pipeline draws their switches on the steps that
   // call them rather than in the lever row.
   function componentsFromServer(components) {
-    state.services.payment = components.payment;
-    state.services.restaurant = components.restaurant;
-    state.services.dispatch = components.dispatch;
-    state.worker = components.worker;
-    state.app = components.app;
+    Object.keys(components).forEach(name => setComponentState(name, components[name]));
   }
 
-  // Switching a component is the control plane's job, so the panel asks and
-  // then re-reads rather than deciding for itself. A request that fails leaves
-  // the state untouched, and the poll it triggers snaps the switch back to the
-  // truth.
-  async function setComponent(name, up) {
+  function setComponentState(name, up) {
+    if (name in state.services) {
+      state.services[name] = up;
+    } else {
+      state[name] = up;
+    }
+  }
+
+  function orderFromPayload(payload) {
+    state.order = orderFromServer(payload);
+    if (state.order && state.order.id === state.placing) state.placing = null;
+  }
+
+  // The panel reads /state two ways, at two speeds.
+  //
+  // The order poll runs often and takes only the order, because the order
+  // moves on the server by itself.
+  //
+  // The refresh runs less often and takes everything, including the components
+  // and the sent signals. Those change only on a click here, so the refresh is
+  // there to catch what a click can't show, such as a process that died on its
+  // own. A refresh that read the server before a click would undo the click on
+  // screen, so a change cancels any refresh in flight and holds the next one
+  // until every change has gone through.
+  const ORDER_POLL_MS = 700;
+  const REFRESH_MS = 2000;
+
+  let refreshTimer = null;
+  let refreshInFlight = null;  // the AbortController of the refresh that is out
+
+  // The controls with a change on its way to the server. Each control sends one
+  // request at a time and is disabled until it's answered. Two quick clicks on
+  // one switch would otherwise send two requests that can reach the server in
+  // either order, leaving it in a different state from the one on screen.
+  const pending = new Set();
+
+  function scheduleRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refresh, REFRESH_MS);
+  }
+
+  // Wraps every request that changes something on the server. `control` names
+  // the control that sent it.
+  async function changing(control, request) {
+    pending.add(control);
+    clearTimeout(refreshTimer);
+    if (refreshInFlight) refreshInFlight.abort();
+
     try {
+      return await request();
+    } finally {
+      pending.delete(control);
+      if (pending.size === 0) scheduleRefresh();
+    }
+  }
+
+  // A refresh that changes a switch means the panel was showing something the
+  // server disagrees with, such as a process that died on its own. Logged so
+  // that a switch that moves by itself leaves a trace in the console.
+  function logCorrections(components) {
+    Object.keys(components).forEach(name => {
+      const shown = name in state.services ? state.services[name] : state[name];
+      if (state.loaded && shown !== components[name]) {
+        console.info(`refresh corrected ${name}: ${shown ? "up" : "down"} -> ${components[name] ? "up" : "down"}`);
+      }
+    });
+  }
+
+  async function refresh() {
+    const controller = new AbortController();
+    refreshInFlight = controller;
+
+    try {
+      const response = await fetch("/state", { signal: controller.signal });
+      const payload = await response.json();
+      if (controller.signal.aborted) return;
+
+      orderFromPayload(payload);
+      logCorrections(payload.components);
+      componentsFromServer(payload.components);
+      state.sent = new Set(payload.signals_sent);
+      state.loaded = true;
+      render();
+    } catch (err) {
+      // The control plane is the one thing the demo cannot switch off, so a
+      // failure here is a real fault rather than part of the lesson. Leave the
+      // last known state on screen instead of blanking the panel.
+      if (err.name !== "AbortError") console.error("control plane unreachable", err);
+    } finally {
+      if (refreshInFlight === controller) refreshInFlight = null;
+
+      // An aborted refresh is replaced by the one its change schedules.
+      if (!controller.signal.aborted && pending.size === 0) scheduleRefresh();
+    }
+  }
+
+  // One order poll at a time. The interval fires every 700ms, so a request that
+  // takes longer than that would stack up behind itself.
+  let pollingOrder = false;
+
+  async function pollOrder() {
+    if (pollingOrder) return;
+    pollingOrder = true;
+
+    try {
+      const response = await fetch("/state");
+      const payload = await response.json();
+      orderFromPayload(payload);
+      render();
+    } catch (err) {
+      console.error("control plane unreachable", err);
+    } finally {
+      pollingOrder = false;
+    }
+  }
+
+  // Switching a component is the control plane's job. The switch shows the
+  // position it was clicked to while the request is out, then takes the state
+  // the control plane reports back, which is the supervisor's word rather than
+  // an echo of the request. A request that fails puts the switch back.
+  async function setComponent(name, up) {
+    if (pending.has(name)) return;
+
+    setComponentState(name, up);
+
+    const switching = changing(name, async () => {
       const response = await fetch(`/components/${name}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ up }),
       });
       if (!response.ok) throw new Error(`control plane answered ${response.status}`);
-    } catch (err) {
-      console.error(`could not switch ${name}`, err);
-    }
 
-    poll();
-  }
-
-  // One poll at a time. The interval fires every 700ms, so a request that takes
-  // longer than that would stack up behind itself.
-  let polling = false;
-
-  async function poll() {
-    if (polling) return;
-    polling = true;
+      return response.json();
+    });
+    render();  // after `changing` has marked the switch pending, so it's drawn disabled
 
     try {
-      const response = await fetch("/state");
-      const payload = await response.json();
-      state.order = orderFromServer(payload);
-      componentsFromServer(payload.components);
-      state.sent = new Set(payload.signals_sent);
-      state.loaded = true;
+      const result = await switching;
+      setComponentState(name, result.up);
     } catch (err) {
-      // The control plane is the one thing the demo cannot switch off, so a
-      // failure here is a real fault rather than part of the lesson. Leave the
-      // last known state on screen instead of blanking the panel.
-      console.error("control plane unreachable", err);
-    } finally {
-      polling = false;
+      console.error(`could not switch ${name}`, err);
+      setComponentState(name, !up);
     }
 
     render();
   }
 
+  // The polls call render() every 700ms, and drawing rebuilds every switch and
+  // button. A click is a press and a release on the same element, so a rebuild
+  // between the two swallows the click. So render() draws only when something
+  // it draws has changed. Everything drawn comes from `state`, `pending` and
+  // `handled`, which makes those three the whole fingerprint.
+  //
+  // Every change to `state` passes through here, so this is also where the
+  // handled list notices what just happened.
+  let lastDrawn = null;
+
   function render() {
+    observeHandled();
+
+    const drawing = JSON.stringify({ ...state, sent: [...state.sent], pending: [...pending], handled: [...handled] });
+    if (drawing === lastDrawn) return;
+
+    lastDrawn = drawing;
+    draw();
+  }
+
+  function draw() {
     const o = state.order;
     const pill = document.getElementById("status-pill");
     pill.className = "status-pill" + (o ? " " + o.status : "");
@@ -336,7 +578,7 @@
       const li = document.createElement("li");
       li.className = "step" + (step.status === "done" ? " done" : "");
       const topCtrl = step.svc
-        ? `<input type="checkbox" class="switch node-sw" data-svc="${step.svc}" ${state.services[step.svc] ? "checked" : ""} aria-label="${step.svc} service up">`
+        ? `<input type="checkbox" class="switch node-sw" data-svc="${step.svc}" ${state.services[step.svc] ? "checked" : ""} ${pending.has(step.svc) ? "disabled" : ""} aria-label="${step.svc} service up">`
         : (o && step.type === "wait" && step.status === "waiting"
             ? (state.sent.has(WAIT_SIGNAL[step.key])
                 ? `<button class="node-btn" disabled>Sent</button>`
@@ -377,6 +619,7 @@
       led.appendChild(div);
     });
 
+    drawHandled();
     renderControls();
   }
 
@@ -399,13 +642,13 @@
     if (o.status === "complete") {
       message = { tone: "done", text: "The order was delivered. Some steps may have been executed more than once, but idempotency in the individual services guarantees nothing was duplicated." };
     } else if (!state.worker) {
-      message = { tone: "down", text: "The worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the worker resumes it right where it left off." };
+      message = { tone: "down", text: "The Worker is down, so nothing is executing. The order's progress is safe on the Temporal server, and restarting the Worker resumes it right where it left off." };
     } else {
       const step = o.steps[o.cursor];
       if (step.type === "call") {
         const doing = { charge: "Charging the customer's card.", restaurant: "Sending the order to the restaurant.", dispatch: "Dispatching a driver." };
         message = step.status === "retrying"
-          ? { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and it carries on the moment ${step.svc} is back.` }
+          ? { tone: "warn", text: `The ${step.svc} service is down, so the "${step.label}" step keeps retrying on its own. The order waits instead of failing, and once ${step.svc} is back, it carries on with its next retry.` }
           : { tone: "info", text: doing[step.key] };
       } else {
         message = step.key === "kitchen"
@@ -429,21 +672,21 @@
   function renderControls() {
     const slot = document.getElementById("lever-slot");
     slot.innerHTML = "";
-    slot.appendChild(makeToggle("Order app", state.app, "Up", "Down", v => setComponent("app", v), "Order app up"));
-    slot.appendChild(makeToggle("Worker", state.worker, "Up", "Down", v => setComponent("worker", v), "Worker running"));
+    slot.appendChild(makeToggle("Order app", state.app, pending.has("app"), "Up", "Down", v => setComponent("app", v), "Order app up"));
+    slot.appendChild(makeToggle("Worker", state.worker, pending.has("worker"), "Up", "Down", v => setComponent("worker", v), "Worker running"));
 
     const btn = document.getElementById("place-btn");
     const running = state.order && state.order.status === "running";
-    btn.disabled = !state.loaded || !state.app || running;
-    btn.textContent = !state.loaded ? "Checking" : !state.app ? "App is down" : running ? "One at a time" : "Place order";
+    btn.disabled = !state.loaded || !state.app || running || state.placing !== null;
+    btn.textContent = !state.loaded ? "Checking" : state.placing !== null ? "Placing order" : !state.app ? "App is down" : running ? "One at a time" : "Place order";
   }
 
-  function makeToggle(name, on, onLabel, offLabel, onChange, aria) {
+  function makeToggle(name, on, busy, onLabel, offLabel, onChange, aria) {
     const div = document.createElement("div");
     div.className = "toggle " + (on ? "up" : "down");
     div.innerHTML = `<div class="meta"><span class="t-name">${name}</span><span class="t-state"><span class="led"></span>${on ? onLabel : offLabel}</span></div>`;
     const sw = document.createElement("input");
-    sw.type = "checkbox"; sw.className = "switch"; sw.checked = on; sw.setAttribute("aria-label", aria);
+    sw.type = "checkbox"; sw.className = "switch"; sw.checked = on; sw.disabled = busy; sw.setAttribute("aria-label", aria);
     sw.onchange = () => onChange(sw.checked);
     div.appendChild(sw);
     return div;
@@ -461,18 +704,14 @@
     state.sent.add("order_prepared");
     render();
 
-    await fetch("/signals/order_prepared", { method: "POST" });
-
-    poll();
+    await changing("order_prepared", () => fetch("/signals/order_prepared", { method: "POST" }));
   }
 
   async function reportOrderDelivered() {
     state.sent.add("order_delivered");
     render();
 
-    await fetch("/signals/order_delivered", { method: "POST" });
-
-    poll();
+    await changing("order_delivered", () => fetch("/signals/order_delivered", { method: "POST" }));
   }
 
   // Which Finish button releases which wait, and which signal that sends. The
@@ -482,13 +721,28 @@
   const WAIT_SIGNAL = { kitchen: "order_prepared", delivery: "order_delivered" };
 
   document.getElementById("place-btn").onclick = async () => {
-    if (!state.app || (state.order && state.order.status === "running")) return;
+    if (state.placing !== null || !state.app || (state.order && state.order.status === "running")) return;
 
+    state.placing = true;
     state.sent.clear();  // a new order's waits have not been released
+    handled.clear();     // the handled list covers one order
+    render();
 
-    await fetch("/orders", { method: "POST" });
+    try {
+      const placed = await changing("order", async () => {
+        const response = await fetch("/orders", { method: "POST" });
+        if (!response.ok) throw new Error(`control plane answered ${response.status}`);
 
-    poll();
+        return response.json();
+      });
+      state.placing = placed.order_id;
+    } catch (err) {
+      console.error("could not place the order", err);
+      state.placing = null;
+    }
+
+    render();
+    pollOrder();
   };
 
   // Draw immediately from what we already know, then go and get the truth.
@@ -497,8 +751,8 @@
   // than a page waiting.
   render();
 
-  poll();
-  setInterval(poll, 700);
+  refresh();
+  setInterval(pollOrder, ORDER_POLL_MS);
 </script>
 </body>
 </html>
