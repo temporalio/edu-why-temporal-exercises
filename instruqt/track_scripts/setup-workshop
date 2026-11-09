@@ -1,0 +1,43 @@
+#!/bin/bash
+# Track setup: start the Temporal dev server, then the control plane, which starts
+# the stubs, the order app and the Worker itself. Everything is installed in the
+# image, so this only starts processes.
+set -euo pipefail
+
+# --- wait for Instruqt ------------------------------------------------------------
+
+# Instruqt sets this file when the sandbox is ready. Outside Instruqt, for a local
+# test, set SKIP_INSTRUQT_BOOTSTRAP=1.
+if [ "${SKIP_INSTRUQT_BOOTSTRAP:-0}" != "1" ]; then
+    until [ -f /opt/instruqt/bootstrap/host-bootstrap-completed ]; do sleep 1; done
+fi
+
+# --- helpers ----------------------------------------------------------------------
+
+wait_for() {
+    local name="$1"
+    local check="$2"
+    for _ in $(seq 1 60); do
+        if eval "$check" >/dev/null 2>&1; then
+            echo "$name is up"
+            return 0
+        fi
+        sleep 1
+    done
+    echo "$name did not start" >&2
+    return 1
+}
+
+# --- Temporal dev server ------------------------------------------------------------
+
+nohup temporal server start-dev --ip 0.0.0.0 --log-level warn \
+    > /tmp/temporal-server.log 2>&1 &
+wait_for "Temporal dev server" "temporal operator cluster health --address 127.0.0.1:7233"
+
+# --- control plane ------------------------------------------------------------------
+
+cd /root/workshop
+rm -f logs/*-ledger.json logs/*-ledger.tmp
+nohup uv run python -m uvicorn delivery.control_plane:app --host 0.0.0.0 --port 8085 \
+    > /tmp/control-plane.log 2>&1 &
+wait_for "Chaos panel" "curl -sf http://127.0.0.1:8085/state"
