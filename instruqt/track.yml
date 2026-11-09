@@ -5,9 +5,8 @@ teaser: Learn how durable applications survive crashes and outages by breaking o
   yourself. Hands-on, no code required.
 description: |-
   In these exercises, you'll interact with a simple food delivery application. You'll place an
-  order and watch it run through to the end. The catch? At any point, you can pull the rug out
-  from under it. Switch off any part of the application (for real), watch the order pause,
-  restore it, and watch it recover. Go ahead, try and break it. We dare you.
+  order and watch it run through to the end. The catch? At any point, you can switch off any
+  part of the application (for real), watch the order pause, restore it, and watch it recover. Go ahead, try and break it. We dare you.
 icon: ""
 tags:
 - temporal
@@ -28,5 +27,5 @@ lab_config:
   hideStopButton: false
   default_layout: AssignmentLeft
   default_layout_sidebar_size: 50
-checksum: "13458443137352848837"
+checksum: "6280668735259546334"
 enhanced_loading: false
