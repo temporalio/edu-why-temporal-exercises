@@ -24,7 +24,7 @@ enhanced_loading: null
 
 In the previous exercise, you watched an order survive everything you threw at it. The Chaos Panel made it easy to see exactly what was happening because it was built to expose that information. A real application doesn't come with this level of visibility. When an application is slow, or starts failing, you are stuck piecing the story together using logs spread across multiple systems.
 
-However, the architecture behind Temporal is different. Temporal records every step of a Workflow (the logic that carries an order from start to finish) as an event in its Event History. These events, and the data they contain, are then made visible directly through the Temporal user interface.
+However, the architecture behind Temporal is different. Temporal records every step of a Workflow (the logic that carries an order from start to finish) as an event in its Event History. These events, and the data they contain, are then made visible directly through the Temporal Web UI.
 
 In this exercise, you'll look at an order through the Temporal Web UI and see what it can tell you that the panel can't.
 
@@ -114,7 +114,7 @@ Read it from the top:
 
 # What the UI doesn't show
 
-The Temporal Web UI shows what the Workflow did. What happens inside each service is that service's job, and Temporal deliberately stays out of it. It doesn't know whether a customer was charged once or twice. Temporal will retry a failed step until it succeeds, but how that retry behaves depends on the business needs. In this case, the business requires that we don't charge the same card twice, but in some business scenarios, performing the same action multiple times might be the desired result. Therefore, it is up to the developer to decide how the retry behaves and what information it should expose. In the Chaos Panel, we have deliberately exposed each service's ledger and rendered that on the panel.
+The Temporal Web UI shows what the Workflow did. What happens inside each service is that service's job, and Temporal deliberately stays out of it. It doesn't know whether a customer was charged once or twice. By default, Temporal will retry a failed step until it succeeds, but how that retry behaves depends on the business needs. In this case, the business requires that we don't charge the same card twice, but in some business scenarios, performing the same action multiple times might be the desired result. Therefore, it is up to the developer to decide how the retry behaves and what information it should expose. In the Chaos Panel, we have deliberately exposed each service's ledger and rendered that on the panel.
 
 # Try your own experiments
 

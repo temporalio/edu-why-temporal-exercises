@@ -28,7 +28,7 @@ In this exercise, you'll interact with what we have dubbed the _Chaos Panel_. It
 
 You'll find the panel in the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
 
-Before the tour, click **Place order** in the panel so you have something to look at while you read. The order will stop at **Kitchen prep** and wait for you there.
+Before you continue, click **Place order** in the panel so you have something to look at while you read. The order will stop at **Kitchen prep** and wait for you there.
 
 At the top of the panel, you'll see the status: **No order**, **Running**, **Paused** or **Complete**. Just below it is a text box. This box will carry descriptive messages about the current state of the system so you can follow along.
 
