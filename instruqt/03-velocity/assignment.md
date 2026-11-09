@@ -37,7 +37,7 @@ Open the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
 
 Scroll to the bottom of the panel, below the **Place order** button. You'll find a section called **What Temporal handled for you**. It starts empty, and each time Temporal takes care of something, a line appears describing what it did. If the same thing happens more than once, the count on that line goes up.
 
-![The What Temporal handled for you list after an order that went through every disruption: saving progress, retrying, recording finished steps (x5), waiting (x2), holding a message, resuming on a new Worker, and running without the Order app](../assets/panel-handled.png)
+![The What Temporal handled for you list after an order that went through every disruption: saving progress, retrying, recording finished steps (x5), waiting (x2), holding a Signal, resuming on a new Worker, and running without the Order app](../assets/panel-handled.png)
 
 The list only shows one order at a time, and it will clear whenever you place a new one.
 
@@ -52,7 +52,7 @@ Even with nothing broken, the list fills up. Temporal saved the order's progress
 Now repeat some of what you did in the first exercise, and watch the list as you go:
 
 - **Switch off the Charge payment step, then place an order.** Notice that a line has appeared for the retries. Its count goes up once for each outage, not for every attempt, so it reads `×1` even though the Temporal UI showed many attempts. Switch the **Charge payment** step back on and let the order continue.
-- **Kill the Worker while the order waits at the kitchen.** Click **Finish** while the Worker is down, and switch the Worker back on. Two lines appear: one for holding the message until a Worker could process it, and one for handing the order to the new Worker so it could carry on from where it left off.
+- **Kill the Worker while the order waits at the kitchen.** Click **Finish** while the Worker is down, and switch the Worker back on. Two lines appear: one for holding the Signal until a Worker could process it, and one for handing the order to the new Worker so it could carry on from where it left off.
 - **Switch off the Order app while an order is running.** A line appears for keeping the order running without it.
 
 Try the same disruptions in different combinations. Every line you see is something Temporal did for you.
