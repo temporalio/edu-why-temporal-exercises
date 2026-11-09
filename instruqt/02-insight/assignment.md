@@ -62,7 +62,7 @@ Return to the [button label="Chaos Panel" background="#444CE7"](tab-0) and click
 
 On the panel, switch off the Charge payment step, then place a new order. **Charge payment** shows **Retrying**, and the panel tells you the payment service is down. However, it won't show any of the additional details such as how many times it has tried, when it will try next, or what the error message was.
 
-In the [button label="Temporal Web UI" background="#444CE7"](tab-1), open the new order and click the **Pending Activities** tab. In this application, each call to an outside service is an Activity, so this tab shows the calls that haven't finished yet.
+In the [button label="Temporal Web UI" background="#444CE7"](tab-1), click **Back to Workflows** to return to the list, then open the new order and click the **Pending Activities** tab. In this application, each call to an outside service is an Activity, so this tab shows the calls that haven't finished yet.
 
 ![Pending Activities while payment is down: attempt 7 of unlimited, the time of the next retry, and the error "payment service unreachable"](../assets/ui-pending-activities.png)
 
@@ -107,8 +107,8 @@ Read it from the top:
 1. **Workflow Task Completed:** the Worker finishes its last task before the crash. Note its **Identity**.
 2. **Workflow Execution Signaled** (`order_prepared`): your kitchen Signal arrives while no Worker is running.
 3. **Workflow Task Scheduled:** Temporal schedules the work.
-4. **Workflow Task Timed Out:** Temporal tries to assign the work to the Worker, but because it has been killed, the task times out.
-5. **Workflow Task Scheduled:** Temporal reschedules the work for another attempt.
+4. **Workflow Task Timed Out:** Temporal tries to give the work to the same Worker, since it already has the order in memory. But that Worker has been killed, so after a few seconds, the task times out.
+5. **Workflow Task Scheduled:** Temporal schedules the work again, this time for any available Worker.
 6. **Workflow Task Started:** now that the Worker has been restarted, it picks up the work.
 7. **Workflow Task Completed:** the work is completed successfully, using the new Worker. Note that its **Identity** is different because it is a new instance.
 

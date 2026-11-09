@@ -37,15 +37,13 @@ Open the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
 
 Scroll to the bottom of the panel, below the **Place order** button. You'll find a section called **What Temporal handled for you**. It starts empty, and each time Temporal takes care of something, a line appears describing what it did. If the same thing happens more than once, the count on that line goes up.
 
-![The What Temporal handled for you list after an order that went through every disruption: saving progress, retrying, recording finished steps (x5), waiting (x2), holding a Signal, resuming on a new Worker, and running without the Order app](../assets/panel-handled.png)
-
 The list only shows one order at a time, and it will clear whenever you place a new one.
 
 # A normal order
 
 Start with everything switched on, and place an order. Take the order all the way to completion.
 
-Even with nothing broken, the list fills up. Temporal saved the order's progress, recorded each step as it finished, and waited for the kitchen and the driver without keeping the application busy while it did.
+Even with nothing broken, the list fills up. Temporal saved the order's progress, recorded each step as it finished, and waited for the kitchen and the driver without tying up resources while it did.
 
 # Breaking things again
 
@@ -56,6 +54,8 @@ Now repeat some of what you did in the first exercise, and watch the list as you
 - **Switch off the Order app while an order is running.** A line appears for keeping the order running without it.
 
 Try the same disruptions in different combinations. Every line you see is something Temporal did for you.
+
+![The What Temporal handled for you list after an order that went through every disruption: saving progress, retrying, recording finished steps (x5), waiting (x2), holding a Signal, resuming on a new Worker, and running without the Order app](../assets/panel-handled.png)
 
 # What you didn't have to build
 
