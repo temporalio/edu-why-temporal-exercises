@@ -24,7 +24,7 @@ enhanced_loading: null
 
 In the previous exercise, you watched an order survive everything you threw at it. The Chaos Panel made it easy to see exactly what was happening because it was built to expose that information. A real application doesn't come with this level of visibility. When an application is slow, or starts failing, you are stuck piecing the story together using logs spread across multiple systems.
 
-However, the architecture behind Temporal is different. Temporal records every step of a Workflow (the process that carries an order from start to finish) as an event in its Event History. These events, and the data they contain, are then made visible directly through the Temporal user interface.
+However, the architecture behind Temporal is different. Temporal records every step of a Workflow (the logic that carries an order from start to finish) as an event in its Event History. These events, and the data they contain, are then made visible directly through the Temporal user interface.
 
 In this exercise, you'll look at an order through the [button label="Temporal UI" background="#444CE7"](tab-1) and see what it can tell you that the panel can't.
 
@@ -42,7 +42,7 @@ At the top, you'll see whether the order is still running, and how long it has t
 
 # Asking the order where it is
 
-Temporal Workflows can expose details about their state that can be queried by other applications, such as the Temporal UI. Our order Workflow has a query that exposes the current step that the Workflow is in. We can use that to determine how far the Workflow has advanced.
+Temporal Workflows can expose details about their state that can be queried by other applications, such as the Temporal UI. Our order Workflow has a Query that exposes the current step that the Workflow is in. We can use that to determine how far the Workflow has advanced.
 
 Let the order reach **Kitchen prep** on the panel, and leave it waiting there.
 
@@ -50,11 +50,11 @@ In the Temporal UI, open the **Queries** tab.
 
 ![The order's page, with the Queries tab highlighted](../assets/ui-queries-tab.png)
 
-Select the **current_step** query, and click **Run Query**.
+Select the **current_step** Query, and click **Run Query**.
 
 ![The Queries tab: the current_step query returns waiting_for_kitchen](../assets/ui-query.png)
 
-The query should return `waiting_for_kitchen`. This is the same approach the Chaos Panel uses to determine how to render the progress of the Workflow.
+The Query should return `waiting_for_kitchen`. This is the same approach the Chaos Panel uses to determine how to render the progress of the Workflow.
 
 Return to the [button label="Chaos Panel" background="#444CE7"](tab-0) and click **Finish** on the kitchen and delivery to let this order complete.
 
@@ -62,7 +62,7 @@ Return to the [button label="Chaos Panel" background="#444CE7"](tab-0) and click
 
 On the panel, switch off the Charge payment step, then place a new order. **Charge payment** shows **Retrying**, and the panel tells you the payment service is down. However, it won't show any of the additional details such as how many times it has tried, when it will try next, or what the error message was.
 
-In the [button label="Temporal UI" background="#444CE7"](tab-1), open the new order and click the **Pending Activities** tab. In Temporal, each call to an outside service is an Activity, so this tab shows the calls that haven't finished yet.
+In the [button label="Temporal UI" background="#444CE7"](tab-1), open the new order and click the **Pending Activities** tab. In this application, each call to an outside service is an Activity, so this tab shows the calls that haven't finished yet.
 
 ![Pending Activities while payment is down: attempt 7 of unlimited, the time of the next retry, and the error "payment service unreachable"](../assets/ui-pending-activities.png)
 
@@ -90,11 +90,11 @@ Now open the **Event History** tab. Every service call appears as three events: 
 
 ![The finished order's page, with the Event History tab highlighted](../assets/ui-history-tab.png)
 
-The list starts with the newest event. Click **Descending** above the list to flip it, so it reads oldest first, in the order things happened.
+The list starts with the newest event. The button above the list reads **Descending**. Click it to switch to oldest first, so the list reads in the order things happened.
 
 ![The Event History heading, with the Descending button highlighted](../assets/ui-history-order.png)
 
-The failed attempts aren't listed one by one. Instead, the **Activity Task Started** event records which attempt finally worked, and the gap between the timestamps shows roughly how long the outage lasted. The **Activity Task Completed** event shows the result: the charge ID the payment service returned.
+The failed attempts aren't listed one by one. Instead, the **Activity Task Started** event records which attempt finally worked, and the gap between the **Activity Task Scheduled** and **Activity Task Started** timestamps shows roughly how long the outage lasted. The **Activity Task Completed** event shows the result: the charge ID the payment service returned.
 
 ![Event History for the payment step: scheduled, then started on attempt 7, then completed with a charge ID](../assets/ui-history-payment.png)
 
