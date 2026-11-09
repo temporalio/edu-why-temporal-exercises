@@ -6,15 +6,16 @@ teaser: Learn how durable applications survive crashes and outages by breaking o
 description: |-
   In these exercises, you'll interact with a simple food delivery application. You'll place an
   order and watch it run through to the end. The catch? At any point, you can switch off any
-  part of the application (for real), watch the order pause, restore it, and watch it recover. Go ahead, try and break it. We dare you.
+  part of the application (for real), watch the order pause, restore it, and watch it recover.
+  Go ahead, try and break it. We dare you.
 icon: ""
 tags:
 - temporal
 owner: temporal
 developers:
 - wade.waldron@temporal.io
-idle_timeout: 1200
-timelimit: 3600
+idle_timeout: 900
+timelimit: 2700
 lab_config:
   extend_ttl: 900
   sidebar_enabled: true
@@ -27,5 +28,5 @@ lab_config:
   hideStopButton: false
   default_layout: AssignmentLeft
   default_layout_sidebar_size: 50
-checksum: "6280668735259546334"
+checksum: "11690989778615779263"
 enhanced_loading: false
