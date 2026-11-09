@@ -8,9 +8,8 @@ notes:
 - type: text
   contents: |-
     In these exercises, you'll interact with a simple food delivery application. You'll place an
-    order and watch it run through to the end. The catch? At any point, you can pull the rug out
-    from under it. Switch off any part of the application (for real), watch the order stall,
-    restore it, and watch it recover. Go ahead, try and break it. We dare you.
+    order and watch it run through to the end. The catch? At any point, you can switch off any
+    part of the application (for real), watch the order stall, restore it, and watch it recover. Go ahead, try and break it. We dare you.
 tabs:
 - id: e8bmsbfdmwk0
   title: Chaos Panel
@@ -23,25 +22,27 @@ timelimit: 1800
 enhanced_loading: null
 ---
 
-In this exercise, you'll interact with what we have dubbed the "Chaos Panel". It allows you to place an order with a fictional food delivery service.
+In this exercise, you'll interact with what we have dubbed the _Chaos Panel_. It allows you to place an order with a fictional food delivery service.
 
-Open the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
+# A tour of the Chaos Panel
 
-Before the tour, click **Place order** in the panel so you have something to look at while you read. The order will stop at **Kitchen prep** and wait for you there.
+You'll find the panel in the [button label="Chaos Panel" background="#444CE7"](tab-0) tab.
 
-At the top of the Chaos Panel, you'll see the order's status: **No order**, **Running**, **Paused** or **Complete**. Just below it is a text box. This box will carry descriptive messages about the current state of the system so you can follow along.
+Before you continue, click **Place order** in the panel so you have something to look at while you read. The order will stop at **Kitchen prep** and wait for you there.
+
+At the top of the panel, you'll see the status: **No order**, **Running**, **Paused** or **Complete**. Just below it is a text box. This box will carry descriptive messages about the current state of the system so you can follow along.
 
 ![The top of the Chaos Panel: the order's status reads Running, and the text box below it says the order is parked at the kitchen](../assets/panel-status.png)
 
-Below the text box, you'll find five boxes, each representing a different stage of the order's journey. Three of them have toggles. Those three represent external services that can be terminated using the toggle. The remaining two boxes represent steps that require human intervention to proceed. At certain points, they will highlight a **Finish** button that allows you to send the appropriate Signal (a message sent to the running order from outside) and move the order to the next step.
+Below the text box, you'll find five boxes, each representing a different stage of the order's journey. Three of them have toggles. Those three represent external services that can be terminated using the toggle. The remaining two, **Kitchen prep** and **Delivery**, represent people: the kitchen staff preparing the food, and the driver delivering it. Temporal doesn't call them, so there's nothing to switch off. Instead, the order waits for them to report back, and in this exercise, you play both roles. When it's their turn, the box highlights a **Finish** button that allows you to send the appropriate Signal (a message sent to the running order from outside) and move the order to the next step.
 
 ![The five stages: Charge payment and Send to restaurant are done, Kitchen prep is waiting with its Finish button, and Dispatch driver and Delivery are still to come](../assets/panel-stages.png)
 
-Beneath the stages, you'll see three "ledgers". These track the external services to show how many times they completed a specific stage. At any given point, the ledger should either read `×0`, `×1`, or `??` if its state is unknown because the service is switched off.
+Beneath the stages, you'll see three _ledgers_. These track the external services to show how many times they completed a specific stage. At any given point, the ledger will display `×0` or `×1` if the service is running, or `??` if the state is unknown because the service is switched off.
 
 The services are idempotent, meaning that repeating the same request has no extra effect, and the ledgers are how you can tell. No matter how many times a stage is retried, we only want a single result. We don't want to accidentally charge someone for an order twice, or accidentally request two separate drivers. We never want to see a ledger go beyond `×1` because that would indicate we've accidentally duplicated data.
 
-![The three ledgers: Payments Received and Orders Received each read ×1, and Orders Dispatched reads ×0](../assets/panel-ledgers.png)
+![The three ledgers: Payment Charged and Sent to Restaurant each read ×1, and Driver Dispatched reads ×0](../assets/panel-ledgers.png)
 
 And finally, at the bottom, you'll see the **Place order** button and two more toggles. The two additional toggles, the **Order app** and the **Worker**, represent other parts of the system that can be turned off/on.
 
@@ -50,13 +51,13 @@ And finally, at the bottom, you'll see the **Place order** button and two more t
 The question becomes, what happens when we start breaking parts of the system?
 
 > [!NOTE]
-> This is not a simulation. Although the food delivery company isn't real, the system running it has real elements. The payment, restaurant and dispatch services are simplified stand-ins for real services, but each one is a real running process, and clicking a toggle actually kills or restarts it. A real Temporal server runs behind this to keep the order alive.
+> This is not a simulation. Although the food delivery company isn't real, the system running it has real elements. The payment, restaurant and dispatch services are simplified stand-ins for real services, but each one is a real running process, and clicking a toggle actually kills or restarts it. A real Temporal Service runs behind this to keep the order alive.
 
 # Interacting with the Chaos Panel
 
 ## Placing an order
 
-The first step should be to place an order and watch it flow through the system. At certain points, you will be required to interact with it by clicking a "Finish" button to move to the next step.
+The first step should be to place an order and watch it flow through the system. At certain points, you will be required to interact with it. When a step shows **Waiting**, the order is waiting for you: click its **Finish** button to move to the next step.
 
 Your order from the tour is waiting at **Kitchen prep**. Click **Finish** and watch it continue. You can only run one order at a time, so the **Place order** button reads **One at a time** until the current order completes.
 
@@ -88,11 +89,11 @@ However, once the order has been placed, the **Order app** is no longer required
 
 ## Checking the ledgers
 
-Remember to check the counts on the ledgers as the order progresses. You should see each one go from `×0` to `×1` once its stage completes. And when their dependent services are unavailable, you'll see them reported as `??`.
+Remember to check the counts on the ledgers as the order progresses. You should see each one go from `×0` to `×1` once its stage completes. And when their dependent services are unavailable, you'll see them reported as `??`. That includes services whose step is already done. Switching one off won't affect the order, since Temporal won't call that service again, but its ledger can't be read until the service comes back.
 
 # Try to break it
 
 Now do your worst. Switch off everything at once, kill the Worker in the middle of a step,
-bring things back in a different order. Toggle a service off/on as many times as you like. When everything is back on, the order finishes, and the ledgers record only a single instance having completed, no matter how many pieces had to get retried.
+bring things back in a different order. Toggle a service off/on as many times as you like. When everything is back on, the order picks up where it left off, and once it's delivered, the ledgers record only a single instance having completed, no matter how many pieces had to get retried.
 
 In the next exercise, we'll look at how Temporal recorded everything you just did.

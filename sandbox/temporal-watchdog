@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Starts the sandbox's Temporal dev server and keeps it running and answering.
+# This is the only place the server's start command lives; the track's setup
+# script starts the watchdog and waits for the server.
+#
+# The Temporal dev server is restarted as soon as its process is gone, or after it
+# fails two health checks in a row. A server the watchdog has just started gets a
+# few seconds to come up, and is then judged like any other, so one that hangs
+# while starting is caught too. It keeps its state in a SQLite file, so a
+# restart brings every Workflow back as it was and costs a learner a pause of a
+# few seconds. That's why the checks are quick to give up on it. If several
+# restarts in a row never answer, the watchdog logs it and stops.
+#
+# Nothing else is touched. The panel's five components are switched off on purpose
+# by learners, and must stay off.
+#
+# Every failure and restart is written to the log, with memory and the busiest
+# processes at the moment it happened, so a restart leaves evidence of its cause.
+set -euo pipefail
+IFS=$'\t\n'
+
+# --- settings ---------------------------------------------------------------
+
+INTERVAL=2                  # seconds between checks
+CHECK_TIMEOUT=2             # seconds a check may take
+FAILURES_BEFORE_RESTART=2   # failed checks in a row
+STARTUP_GRACE=10            # seconds a new server has to start answering
+KILL_WAIT=10                # seconds to wait for a killed server to exit
+MAX_RESTARTS=3              # restarts in a row that never answer before giving up
+LOG_FILE=/tmp/temporal-watchdog.log         # the cleanup script reads this path too
+DB=/root/temporal.db
+SERVER_LOG=/tmp/temporal-server.log         # the cleanup script reads this path too
+SERVER_PATTERN="temporal server start-dev"
+
+# The watchdog's own errors go to its log, so a crash leaves a trace there.
+exec 2>> "$LOG_FILE"
+
+# --- helpers ----------------------------------------------------------------
+
+log() {
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >> "$LOG_FILE"
+}
+
+memory_snapshot() {
+    {
+        echo "--- container memory (bytes used, limit)"
+        cat /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max
+        echo "--- container out-of-memory events"
+        cat /sys/fs/cgroup/memory.events
+        echo "--- processes, by resident memory"
+        ps -eo pid,stat,rss,etime,args --sort=-rss | head -15
+    } >> "$LOG_FILE" 2>&1 || true
+}
+
+server_running() {
+    pgrep -f "$SERVER_PATTERN" >/dev/null
+}
+
+server_healthy() {
+    timeout "$CHECK_TIMEOUT" temporal operator cluster health --address 127.0.0.1:7233 >/dev/null 2>&1
+}
+
+# Starts a server and returns at once. It doesn't wait for the server to answer:
+# the main loop keeps checking, so a server that hangs while starting is caught
+# like any other.
+start_server() {
+    nohup temporal server start-dev --ip 0.0.0.0 --log-level warn --db-filename "$DB" \
+        >> "$SERVER_LOG" 2>&1 &
+    started_at=$(date +%s)
+    awaiting_start=true
+}
+
+# Replaces the server, unless the last MAX_RESTARTS replacements never answered.
+# Then the problem is beyond a restart, so the watchdog stops rather than bury
+# the first failure's evidence under copies of it.
+restart_server() {
+    local reason="$1"
+    if [ "$restarts_without_answer" -ge "$MAX_RESTARTS" ]; then
+        log "giving up: the last $MAX_RESTARTS restarts never answered ($reason)"
+        memory_snapshot
+        exit 1
+    fi
+
+    log "restarting the Temporal dev server: $reason"
+    memory_snapshot
+    restarts_without_answer=$((restarts_without_answer + 1))
+
+    # A killed process normally exits at once. One stuck in the kernel can linger,
+    # and a new server can't start while it holds the port and the database.
+    pkill -9 -f "$SERVER_PATTERN" || true
+    local waited=0
+    while server_running && [ "$waited" -lt "$KILL_WAIT" ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if server_running; then
+        log "the old server is still running ${KILL_WAIT}s after being killed; starting a new one anyway"
+    fi
+
+    start_server
+}
+
+# --- watch ------------------------------------------------------------------
+
+log "watching every ${INTERVAL}s; restarting Temporal after ${FAILURES_BEFORE_RESTART} failed checks"
+failures=0
+started_at=0
+awaiting_start=false
+restarts_without_answer=0
+
+log "starting the Temporal dev server"
+start_server
+
+while true; do
+    # A missing process is restarted at once; an unresponsive one after a run of
+    # failed checks. A server the watchdog just started gets a few seconds
+    # to come up before its failed checks count.
+    if ! server_running; then
+        restart_server "its process is gone"
+        failures=0
+    elif server_healthy; then
+        if [ "$awaiting_start" = true ]; then
+            log "the Temporal dev server is answering, $(( $(date +%s) - started_at ))s after starting"
+            awaiting_start=false
+            restarts_without_answer=0
+        elif [ "$failures" -gt 0 ]; then
+            log "Temporal answering again after $failures failed check(s)"
+        fi
+        failures=0
+    elif [ "$awaiting_start" = true ] && [ $(( $(date +%s) - started_at )) -lt "$STARTUP_GRACE" ]; then
+        : # still starting
+    else
+        failures=$((failures + 1))
+        log "Temporal health check failed ($failures of $FAILURES_BEFORE_RESTART)"
+        if [ "$failures" -ge "$FAILURES_BEFORE_RESTART" ]; then
+            restart_server "not answering"
+            failures=0
+        fi
+    fi
+
+    sleep "$INTERVAL"
+done
