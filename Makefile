@@ -1,4 +1,4 @@
-.PHONY: help temporal stop control-plane test image-build image-push image-startup-check image-promote track-validate track-push track-pull
+.PHONY: help temporal stop control-plane test image-build image-push image-startup-check image-promote track-validate track-push track-promote track-pull
 
 # The sandbox image, tagged with the commit it's built from. The image targets
 # assume you're logged in to GHCR, and the track targets that you're logged in
@@ -46,6 +46,9 @@ track-validate: ## Check the Instruqt track in instruqt/ with Instruqt's own val
 
 track-push: ## Push the Instruqt track to the team named by owner: in instruqt/track.yml
 	cd instruqt && instruqt track push $(TRACK_PUSH_FLAGS)
+
+track-promote: ## Push the current commit's track to the temporal team, where learners use it (DRY_RUN=1 to preview)
+	bash scripts/promote-track.sh
 
 track-pull: ## Pull the Instruqt track into instruqt/, to pick up changes made in Instruqt's web UI
 	cd instruqt && instruqt track pull

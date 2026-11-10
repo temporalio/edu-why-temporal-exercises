@@ -5,13 +5,13 @@ type: challenge
 title: 'Exercise: Insight'
 teaser: Look inside a running order and see exactly what happened to it, and why.
 tabs:
-- id: rxzxevzv0uxx
+- id: ua6ixhfbqcbj
   title: Chaos Panel
   type: service
   hostname: workshop
   path: /
   port: 8085
-- id: yzn7s9jfyygq
+- id: wbzpad8scbqo
   title: Temporal Web UI
   type: service
   hostname: workshop

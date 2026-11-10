@@ -70,7 +70,8 @@ The track lives in `instruqt/`: `track.yml`, one folder per exercise (`01-reliab
 - **Screenshots** come from `instruqt/tools/`: `capture-panel-screenshots.mjs` for the panel and `capture-ui-screenshots.mjs` for the Temporal UI. Each drives a running demo through its API and captures it in headless Chrome. See each script's header for how to run it.
 - **By hand:** the same steps CI runs.
   - **The image:** `make image-build`, `make image-push` and `make image-startup-check`, logged in to GHCR, from a clean, committed tree, since the image is tagged with the commit. `make image-promote` moves `:stable` to that image, which changes what learners run, so leave it to CI unless it's an emergency.
-  - **The track:** `make track-validate`, `make track-push` and `make track-pull` run the matching `instruqt track` command from `instruqt/`. `owner:` in `track.yml` decides which team a push lands in: `temporal-devrel` holds the copy for testing, and `temporal` holds the one learners use.
+  - **The track:** `make track-validate`, `make track-push` and `make track-pull` run the matching `instruqt track` command from `instruqt/`.
+  - **Promoting to production:** `make track-promote` pushes the current commit's track to the `temporal` team, with `owner:` and `maintenance:` changed and the IDs left for Instruqt to match by slug. It asks before pushing. `DRY_RUN=1 make track-promote` shows the production copy without pushing. `owner:` in `track.yml` decides which team a push lands in: `temporal-devrel` holds the copy for testing, and `temporal` holds the one learners use.
 
 ## Testing
 

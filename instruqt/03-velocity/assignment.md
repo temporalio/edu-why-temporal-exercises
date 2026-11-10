@@ -6,13 +6,13 @@ title: 'Exercise: Velocity'
 teaser: See the work Temporal does behind the scenes, and what it would take to build
   it yourself.
 tabs:
-- id: ghnzwdwclin2
+- id: hprsbgchzbpk
   title: Chaos Panel
   type: service
   hostname: workshop
   path: /?velocity
   port: 8085
-- id: wb3sw4koeljd
+- id: 5y4d2om1qfot
   title: Temporal Web UI
   type: service
   hostname: workshop

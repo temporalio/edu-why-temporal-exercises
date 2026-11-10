@@ -11,7 +11,7 @@ notes:
     order and watch it run through to the end. The catch? At any point, you can switch off any
     part of the application (for real), watch the order pause, restore it, and watch it recover. Go ahead, try and break it. We dare you.
 tabs:
-- id: ktxm9bctfcoj
+- id: yxqxechxy5lg
   title: Chaos Panel
   type: service
   hostname: workshop
