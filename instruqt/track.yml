@@ -1,5 +1,5 @@
 slug: why-temporal
-id: g5jz2jnrvypu
+id: djoi6d4j9dhg
 title: 'How Software Survives Failure: An Introduction to Durable Applications'
 teaser: Learn how durable applications survive crashes and outages by breaking one
   yourself. Hands-on, no code required.
@@ -11,7 +11,7 @@ description: |-
 icon: ""
 tags:
 - temporal
-owner: temporal
+owner: temporal-devrel
 developers:
 - wade.waldron@temporal.io
 idle_timeout: 900
@@ -28,5 +28,5 @@ lab_config:
   hideStopButton: false
   default_layout: AssignmentLeft
   default_layout_sidebar_size: 50
-checksum: "11690989778615779263"
+checksum: "12952535930997648118"
 enhanced_loading: false

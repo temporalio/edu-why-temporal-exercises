@@ -1,6 +1,6 @@
 ---
 slug: reliability
-id: qlnex827ki6o
+id: bvpatyffmlgx
 type: challenge
 title: 'Exercise: Reliability'
 teaser: You'll place an order, kill its dependencies, and watch it recover.
@@ -9,9 +9,9 @@ notes:
   contents: |-
     In these exercises, you'll interact with a simple food delivery application. You'll place an
     order and watch it run through to the end. The catch? At any point, you can switch off any
-    part of the application (for real), watch the order stall, restore it, and watch it recover. Go ahead, try and break it. We dare you.
+    part of the application (for real), watch the order pause, restore it, and watch it recover. Go ahead, try and break it. We dare you.
 tabs:
-- id: e8bmsbfdmwk0
+- id: ktxm9bctfcoj
   title: Chaos Panel
   type: service
   hostname: workshop

@@ -1,18 +1,18 @@
 ---
 slug: velocity
-id: xlmcgws3plnd
+id: wzwho9adpfxi
 type: challenge
 title: 'Exercise: Velocity'
 teaser: See the work Temporal does behind the scenes, and what it would take to build
   it yourself.
 tabs:
-- id: gkycrqtqdy14
+- id: ghnzwdwclin2
   title: Chaos Panel
   type: service
   hostname: workshop
   path: /?velocity
   port: 8085
-- id: y320fos0ub8p
+- id: wb3sw4koeljd
   title: Temporal Web UI
   type: service
   hostname: workshop
