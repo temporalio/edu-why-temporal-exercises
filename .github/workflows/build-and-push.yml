@@ -21,7 +21,12 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "instruqt/**"
+      - "Makefile"
+      - "scripts/**"
       - ".github/workflows/**"
+  # TODO: remove this trigger before merging PR #26. It runs the workflow on
+  # the pull request so it can be tested before it reaches main.
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -44,6 +49,8 @@ jobs:
               - 'frontend/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              - 'Makefile'
+              - 'scripts/**'
             track:
               - 'instruqt/**'
 
@@ -54,8 +61,6 @@ jobs:
       packages: write
     uses: ./.github/workflows/_track-ci.yml
     with:
-      track_dir: "."
-      image: ghcr.io/temporalio/why-temporal-sandbox
       build_image: ${{ needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch' }}
       push_track: ${{ needs.changes.outputs.track == 'true' || needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch' }}
     secrets: inherit

@@ -36,8 +36,13 @@ RUN uv sync --frozen --no-install-project
 COPY . .
 RUN uv sync --frozen
 
-# `uv run` checks the environment against the lockfile on every call. Frozen, it
-# never re-resolves, so with everything installed above it never needs the network.
+# `uv run` checks the environment on every call. Frozen, it never re-resolves the
+# lockfile. It would still rebuild this project if it judged the install stale,
+# and part of that judgment is the inode of src/, which changes when the image
+# runs on a different storage backend from the one it was built on. A rebuild
+# needs the network, so with no sync at all, `uv run` uses the environment
+# installed above as it is.
 ENV UV_FROZEN=1
+ENV UV_NO_SYNC=1
 
 CMD ["/bin/bash"]
