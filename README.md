@@ -2,7 +2,7 @@
 
 Hands-on code for **Why Temporal**, an introduction to the problem Temporal solves and why durable execution matters.
 
-This is the **code** repository. It holds the demo app behind the course's hands-on exercises, and the Instruqt track that runs it. It must be **public** so the exercise environment can provision it.
+This is the **code** repository. It holds the demo app behind the course's hands-on exercises, and the Instruqt track that runs it. The track's sandbox image, `ghcr.io/temporalio/why-temporal-sandbox`, must be **public**, since Instruqt pulls it without credentials.
 
 ## What it is
 
@@ -57,13 +57,18 @@ The app lives in `src/delivery/`, the panel in `frontend/`, tests in `tests/`, a
 
 The track lives in `instruqt/`: `track.yml`, one folder per exercise (`01-reliability`, `02-insight`, `03-velocity`), screenshots in `assets/`, and the setup script in `track_scripts/`.
 
-- **The sandbox image** (`sandbox/Dockerfile`) has Python, uv, the Temporal CLI and this repo installed, so starting a lab only starts processes. The panel is built into the image, so any change to `frontend/` or `src/` needs the image rebuilt, which CI does on the merge (below).
+| Tab             | Port | Exercises                      |
+|:----------------|:-----|:-------------------------------|
+| Chaos Panel     | 8085 | Reliability, Insight, Velocity |
+| Temporal Web UI | 8233 | Insight, Velocity              |
+
+- **The sandbox image** (`sandbox/Dockerfile`) has Python, uv, the Temporal CLI and this repo installed, so starting a lab only starts processes. The panel is built into the image, so a change to `frontend/` or `src/` only reaches the track once CI rebuilds the image, when the change is merged.
 - **CI:** `.github/workflows/build-and-push.yml` and `_track-ci.yml` run on merges to `main`, and on demand.
   - **The image:** when its contents change, CI builds it with no cache, pushes it to GHCR under its git SHA, and times a cold start with `.github/scripts/time-container-start.sh`. If the start is within budget, CI moves the `:stable` tag to the new image. `instruqt/config.yml` points at `:stable`, so the track runs the new image from its next lab start.
   - **The track:** CI runs `instruqt track push --force` to the team named by `owner:`. It needs an `INSTRUQT_TOKEN` repo secret, an API key for that team.
   - **After CI pushes,** the server's checksum no longer matches the committed one, so run `make track-pull` before pushing from your own machine.
 - **Screenshots** come from `instruqt/tools/`: `capture-panel-screenshots.mjs` for the panel and `capture-ui-screenshots.mjs` for the Temporal UI. Each drives a running demo through its API and captures it in headless Chrome. See each script's header for how to run it.
-- **Pushing:** `make track-push`, which runs `instruqt track push` from `instruqt/`. `make track-validate` and `make track-pull` wrap the other two `instruqt` commands. `owner:` in `track.yml` decides which team a push lands in: `temporal-devrel` holds the copy for testing, and `temporal` holds the one learners use. Skipping challenges is turned off for learners (`skipping_enabled: false`). After a push, the CLI rewrites `track.yml` and drops that line, because it leaves out settings that are false. The setting stays off.
+- **Pushing by hand:** `make track-validate`, `make track-push` and `make track-pull` run the matching `instruqt track` command from `instruqt/`. `owner:` in `track.yml` decides which team a push lands in: `temporal-devrel` holds the copy for testing, and `temporal` holds the one learners use.
 
 ## Testing
 
