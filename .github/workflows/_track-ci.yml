@@ -154,13 +154,16 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # The CLI is unpacked outside the checkout: the zip holds a file named
+      # `instruqt`, which clashes with the instruqt/ folder when the track
+      # lives at the repo root.
       - name: Install Instruqt CLI
         run: |
           curl -fsSL \
             https://github.com/instruqt/cli/releases/latest/download/instruqt-linux.zip \
-            -o instruqt.zip
-          unzip -q instruqt.zip
-          sudo install -m 0755 instruqt /usr/local/bin/instruqt
+            -o "$RUNNER_TEMP/instruqt.zip"
+          unzip -q "$RUNNER_TEMP/instruqt.zip" -d "$RUNNER_TEMP/instruqt-cli"
+          sudo install -m 0755 "$RUNNER_TEMP/instruqt-cli/instruqt" /usr/local/bin/instruqt
           instruqt version
 
       - name: Validate track
