@@ -13,7 +13,11 @@ IFS=$'\t\n'
 # script isn't running on Instruqt (the startup gate in CI, or a local test),
 # the file will never appear, and there's nothing to wait for.
 if [ -n "${INSTRUQT_PARTICIPANT_ID:-}" ]; then
+    echo "Running on Instruqt: waiting for the sandbox bootstrap"
     until [ -f /opt/instruqt/bootstrap/host-bootstrap-completed ]; do sleep 1; done
+    echo "Sandbox bootstrap complete"
+else
+    echo "Not running on Instruqt (no INSTRUQT_PARTICIPANT_ID): skipping the bootstrap wait"
 fi
 
 # --- helpers ----------------------------------------------------------------
