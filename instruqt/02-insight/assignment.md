@@ -1,17 +1,17 @@
 ---
 slug: insight
-id: jhy7uu6siteu
+id: dacippgweizm
 type: challenge
 title: 'Exercise: Insight'
 teaser: Look inside a running order and see exactly what happened to it, and why.
 tabs:
-- id: k6ctftrxnvvy
+- id: rxzxevzv0uxx
   title: Chaos Panel
   type: service
   hostname: workshop
   path: /
   port: 8085
-- id: ay5i2apna0jg
+- id: yzn7s9jfyygq
   title: Temporal Web UI
   type: service
   hostname: workshop

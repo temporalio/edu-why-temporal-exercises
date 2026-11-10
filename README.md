@@ -59,7 +59,7 @@ The track lives in `instruqt/`: `track.yml`, one folder per exercise (`01-reliab
 
 - **The sandbox image** (`sandbox/Dockerfile`) has Python, uv, the Temporal CLI and this repo installed, so starting a lab only starts processes. The panel is built into the image, so any change to `frontend/` or `src/` needs the image rebuilt for `linux/amd64`, pushed to `ghcr.io/temporalio/why-temporal-sandbox`, and its new digest set in `instruqt/config.yml`.
 - **Screenshots** come from `instruqt/tools/`: `capture-panel-screenshots.mjs` for the panel and `capture-ui-screenshots.mjs` for the Temporal UI. Each drives a running demo through its API and captures it in headless Chrome. See each script's header for how to run it.
-- **Pushing:** `instruqt track push` from `instruqt/`. Skipping challenges is turned off for learners (`skipping_enabled: false`). After a push, the CLI rewrites `track.yml` and drops that line, because it leaves out settings that are false. The setting stays off.
+- **Pushing:** `instruqt track push` from `instruqt/`. The track belongs to the `temporal-devrel` team (`owner:` in `track.yml`), which is where it's released from. An older copy lives in the `temporal` team for the invites made before the move; pushes from this repo don't update it. Skipping challenges is turned off for learners (`skipping_enabled: false`). After a push, the CLI rewrites `track.yml` and drops that line, because it leaves out settings that are false. The setting stays off.
 
 ## Testing
 
