@@ -24,9 +24,6 @@ on:
       - "Makefile"
       - "scripts/**"
       - ".github/workflows/**"
-  # TODO: remove this trigger before merging PR #26. It runs the workflow on
-  # the pull request so it can be tested before it reaches main.
-  pull_request:
   workflow_dispatch:
 
 jobs:
