@@ -82,21 +82,21 @@ jobs:
       packages: write
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Only runs when a companion code repo was supplied. Lands the code at
       # the path the Dockerfile already expects, so one Dockerfile serves
       # both layouts.
       - name: Checkout companion code
         if: ${{ inputs.code_repo != '' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ inputs.code_repo }}
           ref: ${{ inputs.code_ref }}
           path: ${{ inputs.track_dir }}/course-repo
 
       # GHCR shown. Swap the login for your team's usual registry if it differs.
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -104,7 +104,7 @@ jobs:
 
       # no-cache: the gate must time the image a learner gets, not a warm
       # layer cache on this runner.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ${{ inputs.track_dir }}
           file: ${{ inputs.track_dir }}/sandbox/Dockerfile
@@ -152,7 +152,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install Instruqt CLI
         run: |
