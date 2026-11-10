@@ -1,0 +1,214 @@
+# Reusable build + push pipeline for one Instruqt track.
+# A caller passes `track_dir`, usually a language root such as "python".
+#
+# - build-image: rebuilds the sandbox image with no cache, pushes it under its
+#   git SHA, then runs the 90-second startup gate against a COLD pull of that
+#   SHA. Only if the gate passes does `:stable` (on main) move to the new
+#   image. config.yml points at `:stable`, so a slow image never reaches
+#   learners. Runs only when build_image=true (the caller sets that when
+#   sandbox/** changed, or on manual dispatch).
+#
+#   The gate needs scripts/time-container-start.sh from the instruqt-test
+#   skill copied into the repo at .github/scripts/time-container-start.sh.
+# - push-track: `instruqt track push --force` to publish the track definition.
+#   Do not commit checksum-only writeback after CI owns pushes.
+#
+# Auth: the CLI reads the INSTRUQT_TOKEN env var. Set a repo secret named
+# INSTRUQT_TOKEN to an org API key (Instruqt -> Team Settings -> API keys). The
+# destination org comes from `owner:` in track.yml, not a CLI flag.
+#
+# Optional companion-code repo: if the exercise code lives in its own repo
+# (the "course model" / mono-repo layouts in Phase 3), set `code_repo` and the
+# build checks it out into <track_dir>/course-repo so the Dockerfile's
+# `COPY course-repo/` works unchanged. Leave `code_repo` empty for the
+# default single-repo layout, where course-repo/ is already in this repo.
+#
+# `code_ref` lets a manual dispatch republish against a specific branch, tag,
+# or SHA of that code repo. There is deliberately no repository_dispatch from
+# the code side: rebuilding the image stays a manual action so a code change
+# cannot surprise-rebuild during a live workshop.
+#
+# No placeholders to substitute here. Configure everything in the caller.
+name: track-ci (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      track_dir:
+        description: Language or track root containing instruqt/, sandbox/, and course-repo/.
+        type: string
+        default: "python"
+      image:
+        description: >
+          Full image ref for the sandbox (no tag). Use your team's usual
+          registry, or ask in #topic-instruqt.
+        type: string
+        required: true
+      build_image:
+        description: Rebuild the sandbox image.
+        type: boolean
+        default: false
+      push_track:
+        description: Push the track definition to Instruqt.
+        type: boolean
+        default: false
+      code_repo:
+        description: >
+          Optional companion code repo (owner/name) baked into the image.
+          Leave empty when course-repo/ lives in this repo.
+        type: string
+        default: ""
+      code_ref:
+        description: Ref of the companion code repo to build against.
+        type: string
+        default: main
+      startup_budget:
+        description: Startup budget in seconds (cold pull + start). The hard requirement is 90.
+        type: number
+        default: 90
+      offline_probe:
+        description: >
+          Prove the lab starts with no network. Set false only when the setup
+          script does the allowlisted credential fetch (LiteLLM key).
+        type: boolean
+        default: true
+
+jobs:
+  build-image:
+    if: ${{ inputs.build_image }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # Only runs when a companion code repo was supplied. Lands the code at
+      # the path the Dockerfile already expects, so one Dockerfile serves
+      # both layouts.
+      - name: Checkout companion code
+        if: ${{ inputs.code_repo != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.code_repo }}
+          ref: ${{ inputs.code_ref }}
+          path: ${{ inputs.track_dir }}/course-repo
+
+      # GHCR shown. Swap the login for your team's usual registry if it differs.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # no-cache: the gate must time the image a learner gets, not a warm
+      # layer cache on this runner.
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.track_dir }}
+          file: ${{ inputs.track_dir }}/sandbox/Dockerfile
+          push: true
+          no-cache: true
+          platforms: linux/amd64
+          tags: ${{ inputs.image }}:${{ github.sha }}
+
+      - name: Startup gate (cold pull + start <= budget)
+        env:
+          IMAGE: ${{ inputs.image }}:${{ github.sha }}
+          TRACK_DIR: ${{ inputs.track_dir }}
+          BUDGET: ${{ inputs.startup_budget }}
+          OFFLINE: ${{ inputs.offline_probe }}
+        run: |
+          gate=.github/scripts/time-container-start.sh
+          [ -f "$gate" ] || { echo "::error::$gate missing. Copy it from the instruqt-test skill."; exit 1; }
+          setup="$TRACK_DIR/instruqt/track_scripts/setup-workshop"
+          args=(--cold --budget "$BUDGET")
+          [ -f "$setup" ] && args+=(--setup "$setup")
+          [ "$OFFLINE" = "true" ] && args+=(--offline-probe)
+          NO_COLOR=1 bash "$gate" "$IMAGE" "${args[@]}" | tee startup-gate.txt
+          rc=${PIPESTATUS[0]}
+          { echo '### Sandbox startup gate'; echo '```'; tail -n 12 startup-gate.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Promote to :stable (main only, gate passed)
+        if: ${{ github.ref_name == 'main' }}
+        env:
+          IMAGE: ${{ inputs.image }}
+          SHA: ${{ github.sha }}
+        run: docker buildx imagetools create -t "$IMAGE:stable" "$IMAGE:$SHA"
+
+  push-track:
+    needs: build-image
+    # Run after the image build when there is one, but also when only the track
+    # definition changed (build-image skipped). Block only if the build FAILED
+    # or was cancelled.
+    if: >-
+      ${{ always()
+          && inputs.push_track
+          && needs.build-image.result != 'failure'
+          && needs.build-image.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Instruqt CLI
+        run: |
+          curl -fsSL \
+            https://github.com/instruqt/cli/releases/latest/download/instruqt-linux.zip \
+            -o instruqt.zip
+          unzip -q instruqt.zip
+          sudo install -m 0755 instruqt /usr/local/bin/instruqt
+          instruqt version
+
+      - name: Validate track
+        working-directory: ${{ inputs.track_dir }}/instruqt
+        env:
+          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+        run: instruqt track validate
+
+      - name: Push track to Instruqt
+        working-directory: ${{ inputs.track_dir }}/instruqt
+        env:
+          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+        run: instruqt track push --force
+
+      - name: Note checksum writeback policy
+        run: echo "Track pushed with --force. Checksum writeback not committed."
+
+      # ---------------------------------------------------------------------
+      # OPTIONAL: commit the canonicalized writeback back to main.
+      #
+      # `instruqt track push` re-serializes track.yml (checksum) and each
+      # assignment.md frontmatter. Committing that back makes the repo an
+      # exact mirror of the platform. The default above does NOT do this,
+      # because --force ignores the committed checksum anyway and the extra
+      # bot commits are noise.
+      #
+      # Turn it on if you want the repo to mirror the platform byte for byte.
+      # Tradeoffs:
+      #   - needs `contents: write` on this job (change it above),
+      #   - needs Settings -> Actions -> Workflow permissions = read/write,
+      #   - needs main unprotected, or the Actions bot allowed to push to it
+      #     (a protected main requiring PRs will reject the writeback),
+      #   - the skip-ci marker is load-bearing on the bot commit. Never put
+      #     that literal token in a human commit or PR message: GitHub honors
+      #     it anywhere in the head commit message and will silently skip the
+      #     whole run.
+      #
+      # - name: Commit canonicalized writeback to main
+      #   if: ${{ github.ref == 'refs/heads/main' }}
+      #   env:
+      #     TRACK_DIR: ${{ inputs.track_dir }}
+      #   run: |
+      #     git config user.name "github-actions[bot]"
+      #     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      #     git add "$TRACK_DIR/instruqt"
+      #     if git diff --cached --quiet; then
+      #       echo "No writeback to commit."
+      #     else
+      #       git commit -m "chore: sync Instruqt push writeback for $TRACK_DIR [skip ci]"
+      #       git push origin HEAD:main
+      #     fi
