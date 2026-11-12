@@ -53,7 +53,7 @@ At the top are the order's status and how long it has run. Below that, **Input**
 <summary style="width: fit-content; background: #444CE7; color: #FFFFFF; padding: 2px 10px; border-radius: 4px; margin-bottom: 6px; cursor: pointer">What's a Query?</summary>
 <div style="border-left: 3px solid #444CE7; padding-left: 12px; margin-bottom: 8px">
 
-A Workflow can expose its state through a Query, which other applications, such as the Temporal Web UI, can call. Our order Workflow has a Query that reports its current step, which shows how far the order has got.
+A Workflow can expose its state through a Query, which other applications, such as the Temporal Web UI, can call. Our order Workflow has a Query that reports its current step, which shows how far along the order is.
 
 </div>
 </details>
