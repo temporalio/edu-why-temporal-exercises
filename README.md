@@ -57,10 +57,7 @@ The app lives in `src/delivery/`, the panel in `frontend/`, tests in `tests/`, a
 
 The track lives in `instruqt/`: `track.yml`, one folder per exercise (`01-reliability`, `02-insight`, `03-velocity`), screenshots in `assets/`, and the setup script in `track_scripts/`.
 
-| Tab             | Port | Exercises                      |
-|:----------------|:-----|:-------------------------------|
-| Chaos Panel     | 8085 | Reliability, Insight, Velocity |
-| Temporal Web UI | 8233 | Insight, Velocity              |
+Each exercise opens beside its instructions with the **Chaos Panel** tab (port 8085), which runs the demo: placing an order, switching services on and off, and showing the order's progress. Insight and Velocity add a **Temporal Web UI** tab (port 8233), for reading what Temporal recorded about the order.
 
 - **The sandbox image** (`sandbox/Dockerfile`) has Python, uv, the Temporal CLI and this repo installed, so starting a lab only starts processes. The panel is built into the image, so a change to `frontend/` or `src/` only reaches the track once CI rebuilds the image, when the change is merged.
 - **CI:** `.github/workflows/build-and-push.yml` and `_track-ci.yml` run on merges to `main`, and on demand. They call the same `make` targets you can run yourself (below).
