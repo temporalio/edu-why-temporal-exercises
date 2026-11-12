@@ -29,6 +29,6 @@ lab_config:
   override_challenge_layout: true
   hideStopButton: false
   default_layout: AssignmentLeft
-  default_layout_sidebar_size: 50
-checksum: "7449970526979852580"
+  default_layout_sidebar_size: 40
+checksum: "11191603188514020699"
 enhanced_loading: false
