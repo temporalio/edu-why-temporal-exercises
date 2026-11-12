@@ -39,7 +39,7 @@ Temporal records every step of a Workflow (the logic that carries an order from 
 
 In the [button label="Chaos Panel" background="#444CE7"](tab-0), place an order. Then open the [button label="Temporal Web UI" background="#444CE7"](tab-1).
 
-Each order is a Workflow, and its Workflow ID is the order ID shown on the panel. If your order isn't in the list yet, click **Refresh**. Then click your order to open it.
+Each order is a Workflow (the logic that carries an order from start to finish), and its Workflow ID is the order ID shown on the panel. If your order isn't in the list yet, click **Refresh**. Then click your order to open it.
 
 ![The Workflows list: the new order is at the top, Running, with the Refresh button highlighted](../assets/ui-workflows.png)
 
@@ -123,6 +123,10 @@ Further down, find the crash:
 
 ![Event History around the crash: the kitchen Signal arrives, the task times out, and a Worker with a different identity picks the order up](../assets/ui-history-crash.png)
 
+<details>
+<summary style="width: fit-content; background: #444CE7; color: #FFFFFF; padding: 2px 10px; border-radius: 4px; margin-bottom: 6px; cursor: pointer">Reading the crash, event by event</summary>
+<div style="border-left: 3px solid #444CE7; padding-left: 12px; margin-bottom: 8px">
+
 Read it from the top:
 
 1. **Workflow Task Completed:** the Worker finishes its last task before the crash. Note its **Identity**.
@@ -132,6 +136,9 @@ Read it from the top:
 5. **Workflow Task Scheduled:** Temporal schedules the work again, this time for any available Worker.
 6. **Workflow Task Started:** now that the Worker has been restarted, it picks up the work.
 7. **Workflow Task Completed:** the new Worker completes the work. Its **Identity** is different, because it's a new instance.
+
+</div>
+</details>
 
 # What the UI doesn't show
 

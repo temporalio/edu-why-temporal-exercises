@@ -30,7 +30,7 @@ You'll find the panel in the [button label="Chaos Panel" background="#444CE7"](t
 
 Click **Place order** now, so you have something to watch while you read. The order stops at **Kitchen prep** and waits for you.
 
-The tour below explains each part of the panel. Click a part to expand it, or skip the tour if you'd rather start trying things.
+The tour below explains each part of the panel. Click a part to expand it, or skip ahead to **Interacting with the Chaos Panel** if you'd rather start trying things.
 
 > [!NOTE]
 > This is not a simulation. The food delivery company isn't real, but the system running it is. The payment, restaurant and dispatch services are simplified, but each is a real running process, and clicking a toggle actually kills or restarts it. A real Temporal Service keeps the order alive.
@@ -99,7 +99,7 @@ Turn the service back on and watch the order recover. It won't move the instant 
 
 The **Worker** is the process that runs the order. Turn it off, and nothing can proceed.
 
-Try switching off the **Worker** while the order waits at **Kitchen prep**. The **Finish** button still works and sends the Signal, but with no **Worker**, nothing moves. Within about 10 seconds of restarting the **Worker**, it picks up the Signal and resumes where it left off.
+Try switching off the **Worker** while the order waits at **Kitchen prep**. The **Finish** button still works and sends the Signal (a message to the running order from outside), but with no **Worker**, nothing moves. Within about 10 seconds of restarting the **Worker**, it picks up the Signal and resumes where it left off.
 
 Try killing it at other points, too. If you kill it partway through a step, that step sits at **In progress** for about 10 seconds after the **Worker** comes back, while Temporal waits for the interrupted attempt to time out before trying again.
 
