@@ -13,6 +13,7 @@ tags:
 - temporal
 owner: temporal-devrel
 developers:
+- angela.zhou@temporal.io
 - wade.waldron@temporal.io
 maintenance: true
 idle_timeout: 900
@@ -29,5 +30,5 @@ lab_config:
   hideStopButton: false
   default_layout: AssignmentLeft
   default_layout_sidebar_size: 50
-checksum: "12873916559999252696"
+checksum: "7449970526979852580"
 enhanced_loading: false
