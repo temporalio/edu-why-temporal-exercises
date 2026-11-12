@@ -1,0 +1,63 @@
+# Single-track caller for a one-repo layout, from the instruqt-create skill's
+# template (temporalio/temporal-instruqt-skills, commit 2c24969). This repo has
+# no language folder, so the track lives at the repo root, and the code baked
+# into the image is sandbox/, src/, frontend/ and the Python project files.
+#
+# The `changes` job splits the image's contents from instruqt so the image
+# rebuilds only when baked assets change, while a prose- or config-only
+# edit still pushes the track without a wasteful rebuild.
+#
+# Required once: a repo secret named INSTRUQT_TOKEN (org API key).
+#
+name: Build and publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sandbox/**"
+      - "src/**"
+      - "frontend/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "instruqt/**"
+      - "Makefile"
+      - "scripts/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+      track: ${{ steps.filter.outputs.track }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        id: filter
+        with:
+          filters: |
+            docker:
+              - 'sandbox/**'
+              - 'src/**'
+              - 'frontend/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Makefile'
+              - 'scripts/**'
+            track:
+              - 'instruqt/**'
+
+  ci:
+    needs: changes
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_track-ci.yml
+    with:
+      build_image: ${{ needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch' }}
+      push_track: ${{ needs.changes.outputs.track == 'true' || needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch' }}
+    secrets: inherit

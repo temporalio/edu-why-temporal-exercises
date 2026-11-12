@@ -1,0 +1,106 @@
+# Reusable build + push pipeline for the Instruqt track, called by
+# build-and-push.yml.
+#
+# The build logic lives in the Makefile, so anyone can run the same steps
+# locally, and this file only adds what's specific to GitHub: logging in, the
+# secrets, the order the steps run in, and the run summary.
+#
+# - build-image: `make image-build`, `make image-push` and
+#   `make image-startup-check` build the image with no cache, push it under its
+#   git SHA, and time a cold start of it against the budget. On main, if the
+#   check passes, `make image-promote` moves `:stable` to the new image, and
+#   config.yml points at `:stable`. Runs only when build_image=true (the caller
+#   sets that when the image's contents changed, or on manual dispatch).
+# - push-track: `make track-push` with `--force` to publish the track
+#   definition. Do not commit checksum-only writeback after CI owns pushes.
+#
+# Auth: the Instruqt CLI reads the INSTRUQT_TOKEN env var. Set a repo secret
+# named INSTRUQT_TOKEN to an API key for the team named by `owner:` in
+# track.yml (Instruqt -> Team Settings -> API keys).
+name: track-ci (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      build_image:
+        description: Rebuild the sandbox image.
+        type: boolean
+        default: false
+      push_track:
+        description: Push the track definition to Instruqt.
+        type: boolean
+        default: false
+
+jobs:
+  build-image:
+    if: ${{ inputs.build_image }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the image
+        run: make image-build
+
+      - name: Push the image
+        run: make image-push
+
+      - name: Check the image's startup (cold pull + start <= budget, offline)
+        run: |
+          NO_COLOR=1 make image-startup-check | tee startup-check.txt
+          rc=${PIPESTATUS[0]}
+          { echo '### Sandbox startup check'; echo '```'; tail -n 12 startup-check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Promote to :stable (main only, startup check passed)
+        if: ${{ github.ref_name == 'main' }}
+        run: make image-promote
+
+  push-track:
+    needs: build-image
+    # Run after the image build when there is one, but also when only the track
+    # definition changed (build-image skipped). Block only if the build FAILED
+    # or was cancelled.
+    if: >-
+      ${{ always()
+          && inputs.push_track
+          && needs.build-image.result != 'failure'
+          && needs.build-image.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # The CLI is unpacked outside the checkout: the zip holds a file named
+      # `instruqt`, which clashes with the instruqt/ folder at the repo root.
+      - name: Install Instruqt CLI
+        run: |
+          curl -fsSL \
+            https://github.com/instruqt/cli/releases/latest/download/instruqt-linux.zip \
+            -o "$RUNNER_TEMP/instruqt.zip"
+          unzip -q "$RUNNER_TEMP/instruqt.zip" -d "$RUNNER_TEMP/instruqt-cli"
+          sudo install -m 0755 "$RUNNER_TEMP/instruqt-cli/instruqt" /usr/local/bin/instruqt
+          instruqt version
+
+      - name: Validate track
+        env:
+          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+        run: make track-validate
+
+      - name: Push track to Instruqt
+        env:
+          INSTRUQT_TOKEN: ${{ secrets.INSTRUQT_TOKEN }}
+        run: make track-push TRACK_PUSH_FLAGS=--force
+
+      - name: Note checksum writeback policy
+        run: echo "Track pushed with --force. Checksum writeback not committed."

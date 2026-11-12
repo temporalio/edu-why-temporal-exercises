@@ -2,7 +2,7 @@
 
 Hands-on code for **Why Temporal**, an introduction to the problem Temporal solves and why durable execution matters.
 
-This is the **code** repository. It holds the demo app behind the course's hands-on exercises, and the Instruqt track that runs it. It must be **public** so the exercise environment can provision it.
+This is the **code** repository. It holds the demo app behind the course's hands-on exercises, and the Instruqt track that runs it. The track's sandbox image, `ghcr.io/temporalio/why-temporal-sandbox`, must be **public**, since Instruqt pulls it without credentials.
 
 ## What it is
 
@@ -57,9 +57,18 @@ The app lives in `src/delivery/`, the panel in `frontend/`, tests in `tests/`, a
 
 The track lives in `instruqt/`: `track.yml`, one folder per exercise (`01-reliability`, `02-insight`, `03-velocity`), screenshots in `assets/`, and the setup script in `track_scripts/`.
 
-- **The sandbox image** (`sandbox/Dockerfile`) has Python, uv, the Temporal CLI and this repo installed, so starting a lab only starts processes. The panel is built into the image, so any change to `frontend/` or `src/` needs the image rebuilt for `linux/amd64`, pushed to `ghcr.io/temporalio/why-temporal-sandbox`, and its new digest set in `instruqt/config.yml`.
+Each exercise opens beside its instructions with the **Chaos Panel** tab (port 8085), which runs the demo: placing an order, switching services on and off, and showing the order's progress. Insight and Velocity add a **Temporal Web UI** tab (port 8233), for reading what Temporal recorded about the order.
+
+- **The sandbox image** (`sandbox/Dockerfile`) has Python, uv, the Temporal CLI and this repo installed, so starting a lab only starts processes. The panel is built into the image, so a change to `frontend/` or `src/` only reaches the track once CI rebuilds the image, when the change is merged.
+- **CI:** `.github/workflows/build-and-push.yml` and `_track-ci.yml` run on merges to `main`, and on demand. They call the same `make` targets you can run yourself (below).
+  - **The image:** when its contents change, CI runs `make image-build`, `make image-push` and `make image-startup-check`, then on `main` `make image-promote`, which moves the `:stable` tag to the new image. `instruqt/config.yml` points at `:stable`, so the track runs the new image from its next lab start.
+  - **The track:** CI runs `make track-push` with `--force`, to the team named by `owner:`. It needs an `INSTRUQT_TOKEN` repo secret, an API key for that team.
+  - **After CI pushes,** the server's checksum no longer matches the committed one, so run `make track-pull` before pushing from your own machine.
 - **Screenshots** come from `instruqt/tools/`: `capture-panel-screenshots.mjs` for the panel and `capture-ui-screenshots.mjs` for the Temporal UI. Each drives a running demo through its API and captures it in headless Chrome. See each script's header for how to run it.
-- **Pushing:** `instruqt track push` from `instruqt/`. The track belongs to the `temporal-devrel` team (`owner:` in `track.yml`), which is where it's released from. An older copy lives in the `temporal` team for the invites made before the move; pushes from this repo don't update it. Skipping challenges is turned off for learners (`skipping_enabled: false`). After a push, the CLI rewrites `track.yml` and drops that line, because it leaves out settings that are false. The setting stays off.
+- **By hand:** the same steps CI runs.
+  - **The image:** `make image-build`, `make image-push` and `make image-startup-check`, logged in to GHCR, from a clean, committed tree, since the image is tagged with the commit. `make image-promote` moves `:stable` to that image, which changes what learners run, so leave it to CI unless it's an emergency.
+  - **The track:** `make track-validate`, `make track-push` and `make track-pull` run the matching `instruqt track` command from `instruqt/`.
+  - **Promoting to production:** `make track-promote` pushes the current commit's track to the `temporal` team, with `owner:` and `maintenance:` changed and the IDs left for Instruqt to match by slug. It asks before pushing. `DRY_RUN=1 make track-promote` shows the production copy without pushing. `owner:` in `track.yml` decides which team a push lands in: `temporal-devrel` holds the copy for testing, and `temporal` holds the one learners use.
 
 ## Testing
 

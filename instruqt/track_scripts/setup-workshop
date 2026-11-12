@@ -8,10 +8,16 @@ IFS=$'\t\n'
 
 # --- wait for Instruqt ------------------------------------------------------
 
-# Instruqt sets this file when the sandbox is ready. Outside Instruqt, for a local
-# test, set SKIP_INSTRUQT_BOOTSTRAP=1.
-if [ "${SKIP_INSTRUQT_BOOTSTRAP:-0}" != "1" ]; then
+# Instruqt sets this file when the sandbox is ready. Instruqt also sets
+# INSTRUQT_PARTICIPANT_ID in every lifecycle script, so when it's missing the
+# script isn't running on Instruqt (the startup gate in CI, or a local test),
+# the file will never appear, and there's nothing to wait for.
+if [ -n "${INSTRUQT_PARTICIPANT_ID:-}" ]; then
+    echo "Running on Instruqt: waiting for the sandbox bootstrap"
     until [ -f /opt/instruqt/bootstrap/host-bootstrap-completed ]; do sleep 1; done
+    echo "Sandbox bootstrap complete"
+else
+    echo "Not running on Instruqt (no INSTRUQT_PARTICIPANT_ID): skipping the bootstrap wait"
 fi
 
 # --- helpers ----------------------------------------------------------------
