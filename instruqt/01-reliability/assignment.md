@@ -61,7 +61,7 @@ Below the text box are five boxes, one for each stage of the order. The three wi
 <summary style="width: fit-content; background: #444CE7; color: #FFFFFF; padding: 2px 10px; border-radius: 4px; margin-bottom: 6px; cursor: pointer">Explore the Panel Ledgers</summary>
 <div style="border-left: 3px solid #444CE7; padding-left: 12px; margin-bottom: 8px">
 
-Beneath the stages are three _ledgers_, which count how many times each external service has completed its stage. Each shows `×0` or `×1` while its service is running, or `??` when the service is off and the count can't be read.
+Beneath the stages are three _ledgers_, which count how many times each external service has completed its stage for the current order. Each shows `×0` or `×1` while its service is running, or `??` when the service is off and the count can't be read.
 
 The services are idempotent, meaning that repeating a request has no extra effect, and the ledgers are how you can tell. However many times a stage is retried, we want one result: one charge, one driver. A ledger above `×1` would mean duplicated work.
 
