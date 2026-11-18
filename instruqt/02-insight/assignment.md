@@ -156,3 +156,5 @@ By default, Temporal retries a failed step until it succeeds, but how a retry sh
 # Try your own experiments
 
 Try your own scenarios. Explore the UI, break the Workflow, and see how the Temporal Web UI responds. At each stage, Temporal shows you what went wrong, while making sure the work isn't lost.
+
+In the next exercise, we'll look at what Temporal handled for you, and what it would take to build it yourself. Click **Next** to continue.
