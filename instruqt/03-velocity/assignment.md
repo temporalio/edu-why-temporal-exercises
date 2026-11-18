@@ -70,3 +70,5 @@ Each of those is real engineering work, and each is another system that can fail
 > Temporal doesn't do everything. As you saw in the previous exercise, making sure a retried step doesn't charge a customer twice is still the payment service's job. Temporal makes sure the work gets done, and the developer decides the right behavior.
 >
 > Temporal also has costs of its own. Someone has to operate the Temporal Service, or pay for Temporal Cloud. Workflow code has to follow some rules so the Workflow can pick up where an order left off, and changing a Workflow while orders are still running requires care. However, compared to the costs of doing it without Temporal, these costs are small.
+
+This is the last exercise. Click **Next** to finish the track.

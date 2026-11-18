@@ -126,4 +126,4 @@ A ledger shows `??` whenever its service is off, even if its step is already don
 
 Now do your worst. Switch off everything at once, kill the Worker in the middle of a step, bring things back in a different order, and toggle services as often as you like. When everything is back on, the order picks up where it left off, and once it's delivered, each ledger reads `×1`, however many retries it took.
 
-In the next exercise, we'll look at how Temporal recorded everything you just did.
+In the next exercise, we'll look at how Temporal recorded everything you just did. Click **Next** to continue.
